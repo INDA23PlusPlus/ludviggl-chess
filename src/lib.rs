@@ -30,7 +30,20 @@
 //! ```
 
 /// Represents a position on the board.
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub struct Position { pub x: isize, pub y: isize, }
+
+impl Position {
+
+    pub fn new(x: isize, y: isize) -> Self {
+        Self { x, y, }
+    }
+
+    fn is_valid(&self) -> bool {
+        self.x >= 0 && self.x < 8
+            && self.y >= 0 && self.y < 8
+    }
+}
 
 /// The kind of [Piece].
 #[derive(Clone, Copy)]
@@ -61,7 +74,17 @@ pub struct Piece {
 }
 
 impl Piece {
+
+    fn new(kind: PieceKind) -> Self {
+
+        Self {
+            kind,
+            predicate: false,
+        }
+    }
+
     fn from_promotion(promotion: Promotion) -> Self {
+
         Self {
             kind: match promotion {
                 Promotion::Rook => PieceKind::Rook,
@@ -85,6 +108,7 @@ pub struct Move {
 
 impl Move {
     /// Get the destination of this move.
+    /// Useful for displaying possible moves to player.
     pub fn get_destination(&self) -> Position {
         self.to
     }
@@ -93,18 +117,58 @@ impl Move {
 #[derive(Clone, Copy)]
 enum MoveKind {
     Regular,
-    Capture { other: Piece, },
+    Castling { other_pos: Position },
+    EnPassant,
 }
 
 /// Represents the current player
+#[derive(Clone, Copy)]
 pub enum Player {
     White,
     Black,
 }
 
 struct BoardState {
-    current: [[Piece; 8]; 8],
-    opponent: [[Piece; 8]; 8],
+    current: [[Option<Piece>; 8]; 8],
+    opponent: [[Option<Piece>; 8]; 8],
+}
+
+impl BoardState {
+
+    pub fn new() -> BoardState {
+
+        let mut boards = Self {
+            current: [[None; 8]; 8],
+            opponent: [[None; 8]; 8],
+        };
+
+        use PieceKind::*;
+
+        boards.current[0][7] = Some(Piece::new(Rook));
+        boards.current[1][7] = Some(Piece::new(Knight));
+        boards.current[2][7] = Some(Piece::new(Bishop));
+        boards.current[3][7] = Some(Piece::new(Queen));
+        boards.current[4][7] = Some(Piece::new(King));
+        boards.current[5][7] = Some(Piece::new(Bishop));
+        boards.current[6][7] = Some(Piece::new(Knight));
+        boards.current[7][7] = Some(Piece::new(Rook));
+
+        boards.opponent[0][0] = Some(Piece::new(Rook));
+        boards.opponent[1][0] = Some(Piece::new(Knight));
+        boards.opponent[2][0] = Some(Piece::new(Bishop));
+        boards.opponent[3][0] = Some(Piece::new(Queen));
+        boards.opponent[4][0] = Some(Piece::new(King));
+        boards.opponent[5][0] = Some(Piece::new(Bishop));
+        boards.opponent[6][0] = Some(Piece::new(Knight));
+        boards.opponent[7][0] = Some(Piece::new(Rook));
+
+        for x in 0..8 {
+            boards.current[x][6] = Some(Piece::new(Pawn));
+            boards.opponent[x][1] = Some(Piece::new(Pawn));
+        }
+
+        boards
+    }
 }
 
 /// Represents a game of chess.
@@ -112,6 +176,12 @@ pub struct Game {
     state: State,
     board: BoardState,
     player: Player,
+    white_positions: Vec<(PieceKind, Position)>,
+    black_positions: Vec<(PieceKind, Position)>,
+    moves: Vec<Move>,
+    white_points: u32,
+    black_points: u32,
+    promotion_position: Position,
 }
 
 /// Describing the state of the game.
@@ -128,6 +198,7 @@ pub enum State {
 }
 
 /// Error type for [Game] methods.
+#[derive(Debug)]
 pub enum Error {
     /// The method was called while game was in the wrong state.
     InvalidState,
@@ -138,13 +209,23 @@ pub enum Error {
 impl Game {
     
     /// Creates a new game with pieces in inital positions.
-    pub fn new() -> Game {
-        unimplemented!()
+    pub fn new() -> Self {
+        Self {
+            state: State::SelectPiece,
+            board: BoardState::new(),
+            player: Player::White,
+            white_positions: Vec::new(),
+            black_positions: Vec::new(),
+            moves: Vec::new(),
+            white_points: 0,
+            black_points: 0,
+            promotion_position: Position { x: 0, y: 0, },
+        } 
     }
 
     /// Resets the game to its original state.
     pub fn reset(&mut self) {
-        unimplemented!()
+        *self = Self::new();
     }
 
     /// Returns the current state of the game.
@@ -168,7 +249,12 @@ impl Game {
     /// Get a slice of legal moves for piece selected with [Game::select_piece].
     /// Returns [Error::InvalidState] if game state is not [State::SelectMove].
     pub fn get_moves(&self) -> Result<&[Move], Error> {
-        unimplemented!()
+
+        if !matches!(self.state, State::SelectMove) {
+            return Err(Error::InvalidState);
+        }
+
+        Ok(&self.moves[..])
     }
 
     /// Selects move corresponding to `position`.
@@ -177,22 +263,179 @@ impl Game {
     /// If `position` doesn't correspond to a legal move, 
     /// the state is reverted back to [State::SelectPiece].
     pub fn select_move(&mut self, position: Position) -> Result<(), Error> {
-        unimplemented!()
+
+        if !position.is_valid() {
+            return Err(Error::InvalidPosition);
+        }
+
+        if !matches!(self.state, State::SelectMove) {
+            return Err(Error::InvalidState);
+        }
+
+        // Find move with provided position
+        let mov = self.moves.iter()
+            .find(|m| m.to == position);
+
+        match mov {
+
+            None => {
+                // No corresponding move, revert to SelectPiece
+                self.state = SelectPiece;
+            },
+
+            Some(mov) => {
+
+                let tox = mov.to.x as usize;
+                let toy = mov.to.y as usize;
+
+                let fromx = mov.from.x as usize;
+                let fromy = mov.from.y as usize;
+
+                match mov.kind {
+
+                    MoveKind::Regular => {
+                        
+                        // Check for capture
+                        if let Some(_) = self.board.opponent[tox][toy] {
+                            self.add_point();
+                            self.board.oppponent[tox][toy] = None;
+                        }
+
+                        // Move piece
+                        self.board.current[fromx][fromy] = None;
+                        self.board.current[tox][toy] = Some(mov.piece);
+
+                        // Check for promotion
+                        let edge = if self.player == Player::White { 0 }
+                            else { 7 };
+
+                        if matches!(mov.piece.kind, PieceKind::Pawn) && mov.to.y == edge {
+                            self.state = State::Promotion; 
+                            self.promotion_position = mov.to;
+                            return Ok(());
+                        }
+                    },
+
+                    MoveKind::Castling { other_pos } => {
+                        todo!()
+                    },
+
+                    MoveKind::EnPassant => {
+                        todo!()
+                    },
+                };
+
+                // Check for checkmate
+                self.swap_players();
+                self.state = if self.is_checkmate() {
+                    State::CheckMate
+                } else {
+                    State::SelectPiece
+                };
+            },
+        };
+
+        Ok(())
     }
 
     /// Selects a piece to promote to.
     /// Returns [Error::InvalidState] if game state is not [State::SelectPromotion].
+    /// If `promotion` is [None], the piece is not promoted.
     pub fn select_promotion(&mut self, promotion: Option<Promotion>) -> Result<(), Error> {
-        unimplemented!()
+
+        if !matches!(self.state, State::SelectPromotion) {
+            return Err(Error::InvalidState);
+        }
+
+        self.state = State::SelectPiece;
+
+        let mut piece = match promotion {
+            // No promotion
+            None => {
+                self.swap_players();
+                return Ok(());
+            },
+            // Create promoted piece
+            Some(kind) => Piece::from_promotion(kind),
+        };
+
+        // Can't do castling with this one
+        piece.predicate = true;
+
+        // Promote
+        self.set_at(self.promotion_position, Some(piece)).unwrap();
+
+        // New turn
+        self.swap_players();
+
+        Ok(())
     }
 
     /// Returns a slice of black pieces with corresponding positions.
     pub fn get_black_positions(&self) -> &[(PieceKind, Position)] {
-        unimplemented!()
+        &self.black_positions[..]
     }
 
     /// Returns a slice of white pieces with corresponding positions.
     pub fn get_white_positions(&self) -> &[(PieceKind, Position)] {
+        &self.white_positions[..]
+    }
+
+
+    fn recalculate_positions(&mut self) {
+
+        let (white_board, black_board,) = match self.player {
+            Player::White => (&self.board.current, &self.board.opponent,),
+            Player::Black => (&self.board.opponent, &self.board.current,),
+        };
+
+        self.white_positions.clear();
+        self.black_positions.clear();
+
+        for (x, y) in std::iter::zip(0usize..8, 0usize..8) {
+
+            let ix = x as isize;
+            let iy = y as isize;
+
+            if let Some(piece) = white_board[x][y] {
+                self.white_positions.push((piece.kind, Position::new(ix, iy)));
+            }
+
+            if let Some(piece) = black_board[x][y] {
+                self.black_positions.push((piece.kind, Position::new(ix, iy)));
+            }
+        }
+    }
+
+    fn add_point(&mut self) {
+
+        match self.player {
+            Player::White => self.white_points += 1,
+            Player::Black => self.black_points += 1,
+        };
+    }
+
+    fn swap_players(&mut self) {
+        (self.board.current, self.board.opponent,) =
+            (self.board.opponent, self.board.current,);
+    }
+
+    // Sets piece at position for current player
+    fn set_at(&mut self, position: Position, piece: Option<Piece>) -> Result<(), Error> {
+
+        if !position.is_valid() {
+            return Err(Error::InvalidPosition);    
+        } 
+
+        let x = position.x as usize;
+        let y = position.y as usize;
+
+        self.board.current[x][y] = piece;
+        Ok(())
+    }
+
+    // Checks if current player is checkmated
+    fn is_checkmate() -> bool {
         unimplemented!()
     }
 }

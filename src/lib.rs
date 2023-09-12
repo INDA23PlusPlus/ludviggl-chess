@@ -45,6 +45,18 @@ impl Position {
     }
 }
 
+impl std::ops::Add for Position {
+
+    type Output = Self;
+    
+    fn add(self, rhs: Self) -> Self {
+        Position::new(
+            self.x + rhs.x,
+            self.y + rhs.y,
+        )
+    }
+}
+
 /// The kind of [Piece].
 #[derive(Clone, Copy)]
 pub enum PieceKind {
@@ -68,9 +80,8 @@ pub enum Promotion {
 #[derive(Clone, Copy)]
 pub struct Piece {
     pub kind: PieceKind,
-    // true if kind == Pawn and pawn has moved two steps in one move
-    // true if kind == King or Rook if piece has moved
-    predicate: bool,
+    // Only used for rook/king to check for castling
+    moved: bool,
 }
 
 impl Piece {
@@ -79,7 +90,7 @@ impl Piece {
 
         Self {
             kind,
-            predicate: false,
+            moved: false,
         }
     }
 
@@ -92,7 +103,7 @@ impl Piece {
                 Promotion::Queen => PieceKind::Queen,
                 Promotion::Bishop => PieceKind::Bishop,
             },
-            predicate: false,
+            moved: false,
         }
     }
 }
@@ -117,6 +128,8 @@ impl Move {
 #[derive(Clone, Copy)]
 enum MoveKind {
     Regular,
+    Double,
+    Promotion,
     Castling { other_pos: Position },
     EnPassant,
 }
@@ -169,6 +182,28 @@ impl BoardState {
 
         boards
     }
+
+    pub fn get_current(&self, position: Position) -> Result<Option<Piece>, Error> {
+        
+        if !position.is_valid() {
+            Err(Error::InvalidPosition)
+        } else {
+            let x = position.x as usize;
+            let y = position.y as usize;
+            Ok(self.current[x][y])
+        }
+    }
+
+    pub fn get_opponent(&self, position: Position) -> Result<Option<Piece>, Error> {
+        
+        if !position.is_valid() {
+            Err(Error::InvalidPosition)
+        } else {
+            let x = position.x as usize;
+            let y = position.y as usize;
+            Ok(self.opponent[x][y])
+        }
+    }
 }
 
 /// Represents a game of chess.
@@ -182,6 +217,7 @@ pub struct Game {
     white_points: u32,
     black_points: u32,
     promotion_position: Position,
+    last_double_position: Option<Position>,
 }
 
 /// Describing the state of the game.
@@ -210,7 +246,7 @@ impl Game {
     
     /// Creates a new game with pieces in inital positions.
     pub fn new() -> Self {
-        Self {
+        let mut game = Self {
             state: State::SelectPiece,
             board: BoardState::new(),
             player: Player::White,
@@ -219,8 +255,12 @@ impl Game {
             moves: Vec::new(),
             white_points: 0,
             black_points: 0,
-            promotion_position: Position { x: 0, y: 0, },
-        } 
+            promotion_position: Position::new(0, 0),
+            last_double_position: None,
+        };
+
+        game.recalculate_positions();
+        game
     }
 
     /// Resets the game to its original state.
@@ -243,7 +283,23 @@ impl Game {
     /// Returns [Error::InvalidPosition] if `position` is not on the board. 
     /// Does nothing if the position is empty or occupied by the opponent.
     pub fn select_piece(&mut self, position: Position) -> Result<(), Error> {
-        unimplemented!()
+
+        if !matches!(self.state, State::SelectPiece) {
+            return Err(Error::InvalidState);
+        }
+
+        if !position.is_valid() {
+            return Err(Error::InvalidPosition);
+        }
+
+        match self.board.get_current(position).unwrap() {
+            None => Ok(()),
+            Some(_) => {
+                self.state = State::SelectMove;
+                self.calculate_moves(position);
+                Ok(())
+            },
+        }
     }
 
     /// Get a slice of legal moves for piece selected with [Game::select_piece].
@@ -278,61 +334,8 @@ impl Game {
 
         match mov {
 
-            None => {
-                // No corresponding move, revert to SelectPiece
-                self.state = SelectPiece;
-            },
-
-            Some(mov) => {
-
-                let tox = mov.to.x as usize;
-                let toy = mov.to.y as usize;
-
-                let fromx = mov.from.x as usize;
-                let fromy = mov.from.y as usize;
-
-                match mov.kind {
-
-                    MoveKind::Regular => {
-                        
-                        // Check for capture
-                        if let Some(_) = self.board.opponent[tox][toy] {
-                            self.add_point();
-                            self.board.oppponent[tox][toy] = None;
-                        }
-
-                        // Move piece
-                        self.board.current[fromx][fromy] = None;
-                        self.board.current[tox][toy] = Some(mov.piece);
-
-                        // Check for promotion
-                        let edge = if self.player == Player::White { 0 }
-                            else { 7 };
-
-                        if matches!(mov.piece.kind, PieceKind::Pawn) && mov.to.y == edge {
-                            self.state = State::Promotion; 
-                            self.promotion_position = mov.to;
-                            return Ok(());
-                        }
-                    },
-
-                    MoveKind::Castling { other_pos } => {
-                        todo!()
-                    },
-
-                    MoveKind::EnPassant => {
-                        todo!()
-                    },
-                };
-
-                // Check for checkmate
-                self.swap_players();
-                self.state = if self.is_checkmate() {
-                    State::CheckMate
-                } else {
-                    State::SelectPiece
-                };
-            },
+            None => self.state = State::SelectPiece,
+            Some(mov) => self.execute_move(*mov),
         };
 
         Ok(())
@@ -350,23 +353,28 @@ impl Game {
         self.state = State::SelectPiece;
 
         let mut piece = match promotion {
+
             // No promotion
             None => {
                 self.swap_players();
                 return Ok(());
             },
+
             // Create promoted piece
             Some(kind) => Piece::from_promotion(kind),
         };
 
         // Can't do castling with this one
-        piece.predicate = true;
+        piece.moved = true;
 
         // Promote
-        self.set_at(self.promotion_position, Some(piece)).unwrap();
+        let x = self.promotion_position.x as usize;
+        let y = self.promotion_position.y as usize;
+        self.board.current[x][y] = Some(piece);
 
         // New turn
         self.swap_players();
+        self.recalculate_positions();
 
         Ok(())
     }
@@ -416,26 +424,71 @@ impl Game {
     }
 
     fn swap_players(&mut self) {
+
         (self.board.current, self.board.opponent,) =
             (self.board.opponent, self.board.current,);
     }
 
-    // Sets piece at position for current player
-    fn set_at(&mut self, position: Position, piece: Option<Piece>) -> Result<(), Error> {
+    fn calculate_moves(&mut self, position: Position) {
 
-        if !position.is_valid() {
-            return Err(Error::InvalidPosition);    
-        } 
+        self.moves.clear();
 
-        let x = position.x as usize;
-        let y = position.y as usize;
+        if let Some(piece) = self.board.get_current(position).unwrap() {
 
-        self.board.current[x][y] = piece;
-        Ok(())
+            match piece.kind {
+
+                PieceKind::Pawn => self.calculate_pawn(position),
+                PieceKind::Rook => self.calculate_rook(piece.moved, position),
+                PieceKind::Knight => self.calculate_knight(position),
+                PieceKind::Bishop => self.calculate_bishop(position),
+                PieceKind::Queen => self.calculate_queen(position),
+                PieceKind::King => self.calculate_king(piece.moved, position),
+            };
+        }
     }
 
-    // Checks if current player is checkmated
-    fn is_checkmate() -> bool {
-        unimplemented!()
+    fn execute_move(&mut self, mov: Move) {
+
+        self.last_double_position = None;
+
+        match mov.kind {
+            MoveKind::Regular => {}, 
+            MoveKind::Double => {},
+            MoveKind::Promotion => {},
+            MoveKind::EnPassant => {},
+            MoveKind::Castling { other_pos } => {},
+       };
+
+       self.recalculate_positions(); 
+
+       if matches!(mov.kind, MoveKind::Promotion) {
+           self.state = State::Promotion;
+       } else {
+            
+           self.swap_players();
+
+           if (self.is_checkmated()) {
+               self.state = State::CheckMate;
+           } else {
+               self.state = State::SelectPiece;
+           }
+       }
+    }
+
+    fn calculate_pawn(&self, position: Position) { unimplemented!() }
+
+    fn calculate_rook(&self, moved: bool, position: Position) { unimplemented!() }
+
+    fn calculate_knight(&self, position: Position) { unimplemented!() }
+
+    fn calculate_bishop(&self, position: Position) { unimplemented!() }
+
+    fn calculate_queen(&self, position: Position) { unimplemented!() }
+
+    fn calculate_king(&self, moved: bool, position: Position) { unimplemented!() }
+
+    fn try_move(&self, mov: Move) -> Option<Piece> {
+        
+        
     }
 }

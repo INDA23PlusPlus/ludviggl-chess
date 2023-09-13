@@ -1,4 +1,5 @@
 
+/// Represents the current player.
 #[derive(Clone, Copy)]
 pub enum Player { White, Black, }
 

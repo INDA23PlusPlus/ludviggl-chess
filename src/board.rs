@@ -32,6 +32,8 @@ mod index {
 
 #[derive(Clone, Copy, Default)]
 struct Team {
+    // bitboard with one bit set, corresponding to piece's position
+    // if ==0, piece is captured
     positions: [u64; 16],
     // pins: [u64; 16]
 }
@@ -45,17 +47,13 @@ impl Team {
         }
         m
     }
-
-    pub fn king_pos(&self) -> u64 {
-        self.positions[index::KING]
-    }
 }
 
 #[derive(Default)]
-struct Board {
+pub struct Board {
     current: Team,
     opponent: Team,
-    player: Player,
+    pub player: Player,
 }
 
 impl Board {
@@ -94,26 +92,41 @@ impl Board {
         b
     }
 
-    pub fn switch(&mut self) { 
-        (self.current, self.opponent) = (self.opponent, self.current);
-    }
-
-    pub fn get_pseudo_at_pos(&self, x: u8, y: u8) -> u64 {
-        match self.id_from_pos(x, y) {
-            None => 0,
-            Some(id) => match index::into_piece(id) {
-                Piece::Pawn   => self.psuedo_legal_pawn(id, self.player),
-                Piece::King   => self.pseudo_legal_king(),
-                Piece::Knight => self.pseudo_legal_knight(id),
-                Piece::Bishop => self.pseudo_legal_diag(id),
-                Piece::Rook   => self.pseudo_legal_ortho(id),
-                Piece::Queen  => self.pseudo_legal_diag(id)
-                                | self.pseudo_legal_ortho(id),
-            }
+    pub fn black_iter(&self) -> TeamIterator {
+        match self.player {
+            Player::White => TeamIterator::new(&self.opponent),
+            Player::Black => TeamIterator::new(&self.current),
         }
     }
 
-    fn id_from_pos(&self, x: u8, y: u8) -> Option<usize> {
+    pub fn white_iter(&self) -> TeamIterator {
+        match self.player {
+            Player::White => TeamIterator::new(&self.current),
+            Player::Black => TeamIterator::new(&self.opponent),
+        }
+    }
+
+    pub fn switch(&mut self) { 
+        (self.current, self.opponent) = (self.opponent, self.current);
+        self.player = match self.player {
+            Player::White => Player::Black,
+            Player::Black => Player::White,
+        };
+    }
+
+    pub fn get_pseudo(&self, id: usize) -> u64 {
+        match index::into_piece(id) {
+            Piece::Pawn   => self.psuedo_legal_pawn(id, self.player),
+            Piece::King   => self.pseudo_legal_king(),
+            Piece::Knight => self.pseudo_legal_knight(id),
+            Piece::Bishop => self.pseudo_legal_diag(id),
+            Piece::Rook   => self.pseudo_legal_ortho(id),
+            Piece::Queen  => self.pseudo_legal_diag(id)
+                            | self.pseudo_legal_ortho(id),
+        }
+    }
+
+    pub fn id_from_pos(&self, x: u8, y: u8) -> Option<usize> {
         let pos1 = utils::flatten_bit(x, y);
         for (id, pos2) in self.current.positions.iter().enumerate() {
             if pos1 & pos2 > 0 {
@@ -123,6 +136,19 @@ impl Board {
         None
     }
 
+    pub fn play_move(&mut self, piece_id: usize, dest: u64) {
+        // move piece 
+        self.current.positions[piece_id] = dest;
+        // check for capture
+        for c in &mut self.opponent.positions {
+            if *c == dest {
+                *c = 0;
+                break;
+            }
+        }
+        self.switch();
+    }
+
     fn pseudo_legal_king(&self) -> u64 {
 
         // TODO: avoid check
@@ -130,7 +156,6 @@ impl Board {
         let position = self.current.positions[index::KING];
         let mut moves = MOVES.king_moves[position.trailing_zeros() as usize];
         moves &= !self.current.mask();
-        moves &= self.opponent.mask();
         moves
     }
 
@@ -139,7 +164,6 @@ impl Board {
         let position = self.current.positions[id];
         let mut moves = MOVES.knight_moves[position.trailing_zeros() as usize];
         moves &= !self.current.mask();
-        moves &= self.opponent.mask();
         moves
     }
     
@@ -189,7 +213,7 @@ impl Board {
             double &= !opp_mask;
             double &= !curr_mask;
             moves |= double;
-        } else { double = 0; }
+        };
 
         // Captures available it opponent is there
         attack_r &= opp_mask;
@@ -207,24 +231,24 @@ impl Board {
         let curr_mask = self.current.mask();
         
         // north
-        let mut opp_block   = utils::fill_right_incl(MOVES.north[pos_id] & opp_mask);
-        let mut curr_block  = utils::fill_right_excl(MOVES.north[pos_id] & curr_mask);
-        moves              |= MOVES.north[pos_id] & opp_block & curr_block;
+        let opp_block   = utils::fill_right_incl(MOVES.north[pos_id] & opp_mask);
+        let curr_block  = utils::fill_right_excl(MOVES.north[pos_id] & curr_mask);
+        moves          |= MOVES.north[pos_id] & opp_block & curr_block;
 
         // west
-        let mut opp_block   = utils::fill_right_incl(MOVES.west[pos_id] & opp_mask);
-        let mut curr_block  = utils::fill_right_excl(MOVES.west[pos_id] & curr_mask);
-        moves              |= MOVES.west[pos_id] & opp_block & curr_block;
+        let opp_block   = utils::fill_right_incl(MOVES.west[pos_id] & opp_mask);
+        let curr_block  = utils::fill_right_excl(MOVES.west[pos_id] & curr_mask);
+        moves          |= MOVES.west[pos_id] & opp_block & curr_block;
         
         // south
-        let mut opp_block   = utils::fill_left_incl(MOVES.south[pos_id] & opp_mask);
-        let mut curr_block  = utils::fill_left_excl(MOVES.south[pos_id] & curr_mask);
-        moves              |= MOVES.south[pos_id] & opp_block & curr_block;
+        let opp_block   = utils::fill_left_incl(MOVES.south[pos_id] & opp_mask);
+        let curr_block  = utils::fill_left_excl(MOVES.south[pos_id] & curr_mask);
+        moves          |= MOVES.south[pos_id] & opp_block & curr_block;
 
         // east
-        let mut opp_block   = utils::fill_left_incl(MOVES.east[pos_id] & opp_mask);
-        let mut curr_block  = utils::fill_left_excl(MOVES.east[pos_id] & curr_mask);
-        moves              |= MOVES.east[pos_id] & opp_block & curr_block;
+        let opp_block   = utils::fill_left_incl(MOVES.east[pos_id] & opp_mask);
+        let curr_block  = utils::fill_left_excl(MOVES.east[pos_id] & curr_mask);
+        moves          |= MOVES.east[pos_id] & opp_block & curr_block;
         
         moves
     }
@@ -235,31 +259,55 @@ impl Board {
         let mut moves = 0;
         let opp_mask  = self.opponent.mask();
         let curr_mask = self.current.mask();
-        
+
         // north_east
-        let mut opp_block   = utils::fill_right_incl(MOVES.north_east[pos_id] & opp_mask);
-        let mut curr_block  = utils::fill_right_excl(MOVES.north_east[pos_id] & curr_mask);
-        moves              |= MOVES.north_east[pos_id] & opp_block & curr_block;
+        let opp_block   = utils::fill_right_incl(MOVES.north_east[pos_id] & opp_mask);
+        let curr_block  = utils::fill_right_excl(MOVES.north_east[pos_id] & curr_mask);
+        moves          |= MOVES.north_east[pos_id] & opp_block & curr_block;
 
         // north_west
-        let mut opp_block   = utils::fill_right_incl(MOVES.north_west[pos_id] & opp_mask);
-        let mut curr_block  = utils::fill_right_excl(MOVES.north_west[pos_id] & curr_mask);
-        moves              |= MOVES.north_west[pos_id] & opp_block & curr_block;
+        let opp_block   = utils::fill_right_incl(MOVES.north_west[pos_id] & opp_mask);
+        let curr_block  = utils::fill_right_excl(MOVES.north_west[pos_id] & curr_mask);
+        moves          |= MOVES.north_west[pos_id] & opp_block & curr_block;
         
         // south_east
-        let mut opp_block   = utils::fill_left_incl(MOVES.south_east[pos_id] & opp_mask);
-        let mut curr_block  = utils::fill_left_excl(MOVES.south_east[pos_id] & curr_mask);
-        moves              |= MOVES.south_east[pos_id] & opp_block & curr_block;
+        let opp_block   = utils::fill_left_incl(MOVES.south_east[pos_id] & opp_mask);
+        let curr_block  = utils::fill_left_excl(MOVES.south_east[pos_id] & curr_mask);
+        moves          |= MOVES.south_east[pos_id] & opp_block & curr_block;
 
         // south_west
-        let mut opp_block   = utils::fill_left_incl(MOVES.south_west[pos_id] & opp_mask);
-        let mut curr_block  = utils::fill_left_excl(MOVES.south_west[pos_id] & curr_mask);
-        moves              |= MOVES.south_west[pos_id] & opp_block & curr_block;
+        let opp_block   = utils::fill_left_incl(MOVES.south_west[pos_id] & opp_mask);
+        let curr_block  = utils::fill_left_excl(MOVES.south_west[pos_id] & curr_mask);
+        moves          |= MOVES.south_west[pos_id] & opp_block & curr_block;
         
         moves
     }
 }
 
-#[cfg(test)]
-mod test {
+pub struct TeamIterator<'a> {
+    team: &'a Team,
+    id: usize,
+}
+
+impl<'a> TeamIterator<'a> {
+
+    fn new(team: &'a Team) -> TeamIterator<'a> {
+        TeamIterator {
+            team,
+            id: 0,
+        }
+    }
+}
+
+impl<'a> Iterator for TeamIterator<'a> {
+    
+    type Item = (Piece, u8, u8);
+
+    fn next(&mut self) -> Option<(Piece, u8, u8)> {
+        if self.id < 16 {
+            let pos = utils::unflatten_bit(self.team.positions[self.id]);
+            let piece = index::into_piece(self.id);
+            Some((piece, pos.0, pos.1)) 
+        } else { None }
+    }
 }

@@ -3,35 +3,152 @@ use crate::{
     error::Error,
     piece::Piece,
     player::Player,
+    board::Board,
+    utils,
 };
 
-
+/// Struct containing all game state and data.
 pub struct Game {
     state: State,
+    board: Board,
+    selected_id: usize,
+    selected_moves: (u64, Vec<(u8, u8)>),
+    black_positions: Vec<(Piece, u8, u8)>,
+    white_positions: Vec<(Piece, u8, u8)>,
 }
 
+/// Represents the current state of the game.
 #[derive(Clone, Copy)]
 pub enum State {
+    /// Current player needs to select a piece to move.
     SelectPiece,
+    /// Current player needs to select a move to play for select piece.
     SelectMove,
 }
 
 impl Game {
 
-    pub fn new() -> Game { unimplemented!() }
+    /// Creates a new game with pieces in inital positions.
+    pub fn new() -> Game {
+        let mut game = Game {
+            state: State::SelectPiece,
+            board: Board::new(),
+            selected_id: 0,
+            selected_moves: (0, Vec::new()),
+            black_positions: Vec::new(),
+            white_positions: Vec::new(),
+        };
 
+        game.update_positions();
+        game
+    }
+
+    /// Resets the game to its initial state
+    pub fn reset(&mut self) {
+        *self = Game::new();
+    }
+
+    /// Returns the state of the game.
     pub fn get_state(&self) -> State {
         self.state
     }
+    
+    /// Returns the player whos turn it is.
+    pub fn get_current_player(&self) -> Player {
+        self.board.player
+    }
+    
+    /// Returns black pieces and their positions
+    pub fn get_black_positions(&self) -> &[(Piece, u8, u8)] {
+        &self.black_positions[..]
+    }
 
-    pub fn get_current_player(&self) -> Player { unimplemented!() }
+    /// Returns white pieces and their positions
+    pub fn get_white_positions(&self) -> &[(Piece, u8, u8)] {
+        &self.white_positions[..]
+    }
 
-    pub fn pick_piece(&mut self, x: u8, y: u8) -> Result<(), Error> { unimplemented!() }
+    /// Selects a piece by position on the board.
+    /// If position is occupied by the current player, transitions state to [State::SelectMove].
+    /// If piece corresponding to position has no legal moves, does nothing.
+    /// If position is empty or occupied by opponent, does nothing.
+    /// Returns [Error::InvalidState] if game state is not [State::SelectPiece].
+    /// Returns [Error::InvalidPosition] if position is not on the board.
+    pub fn select_piece(&mut self, x: u8, y: u8) -> Result<(), Error> { 
 
-    pub fn get_moves(&mut self) -> Result<&[(u8, u8)], Error> { unimplemented!() }
+        if !matches!(self.state, State::SelectPiece) {
+            return Err(Error::InvalidState);
+        }
 
-    pub fn pick_move(&mut self, x: u8, y: u8) -> Result<(), Error> { unimplemented!() }
+        if !valid_pos(x, y) {
+            return Err(Error::InvalidPosition);
+        }
 
-    pub fn pick_promotion(&mut self, piece: Piece) -> Result<(), Error> { unimplemented!() }
+        match self.board.id_from_pos(x, y) {
+            None => (), // no piece at pos
+            Some(id) => match self.board.get_pseudo(id) {
+                0 => (), // no legal moves
+                m => {
+                    self.selected_id = id;
+                    self.selected_moves.0 = m;
+                    self.selected_moves.1 = utils::BitIterator::new(m)
+                                            .map(|x| utils::unflatten_bit(x))
+                                            .collect::<Vec<_>>();
+                    self.state = State::SelectMove;
+                }
+            }
+        }
+        Ok(())
+    }
 
+    /// Returns positions corresponding to the legal moves for piece selected with
+    /// [Game::select_piece].
+    /// Returns [Error::InvalidState] if game state is not [State::SelectMove].
+    pub fn get_moves(&mut self) -> Result<&[(u8, u8)], Error> {
+
+        if !matches!(self.state, State::SelectMove) {
+            return Err(Error::InvalidState);
+        }
+
+        Ok(&self.selected_moves.1[..])
+    }
+
+
+    /// Selects a move by corresponding position and executes it.
+    /// If position does not correspond to a legal move, reverts state
+    /// back to [State::SelectPiece].
+    /// Returns [Error::InvalidPosition] if position is not on the board.
+    /// Returns [Error::InvalidState] if game state is not [State::SelectMove].
+    pub fn select_move(&mut self, x: u8, y: u8) -> Result<(), Error> {
+
+        if !matches!(self.state, State::SelectMove) {
+            return Err(Error::InvalidState);
+        }
+
+        if !valid_pos(x, y) {
+            return Err(Error::InvalidPosition);
+        }
+
+        let dest = utils::flatten_bit(x, y);
+
+        if dest & self.selected_moves.0 > 0 {
+            self.board.play_move(self.selected_id, dest);
+        }
+
+        self.state = State::SelectPiece;
+
+        self.update_positions();
+
+        Ok(())
+    }
+
+    fn update_positions(&mut self) {
+        self.black_positions = self.board.black_iter().collect();
+        self.white_positions = self.board.white_iter().collect();
+    }
+
+}
+
+fn valid_pos(x: u8, y: u8) -> bool {
+    x < 8 && y < 8
 }

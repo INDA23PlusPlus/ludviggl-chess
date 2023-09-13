@@ -1,6 +1,6 @@
 
 /// Represents the current player.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum Player { White, Black, }
 
 impl Default for Player {

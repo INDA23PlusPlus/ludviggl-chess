@@ -305,7 +305,16 @@ impl<'a> Iterator for TeamIterator<'a> {
 
     fn next(&mut self) -> Option<(Piece, u8, u8)> {
         if self.id < 16 {
-            let pos = utils::unflatten_bit(self.team.positions[self.id]);
+            let mut bit = self.team.positions[self.id];
+            // piece may be captured
+            while bit == 0 {
+                self.id += 1;
+                if (self.id == 16) {
+                    return None;
+                }
+                bit = self.team.positions[self.id];
+            }
+            let pos = utils::unflatten_bit(bit);
             let piece = index::into_piece(self.id);
             Some((piece, pos.0, pos.1)) 
         } else { None }

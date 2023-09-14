@@ -27,11 +27,12 @@
 //! ### Rendering
 //! ```no_run
 //! use ludviggl_chess::{ Game, Piece, State, };
+//!
 //! # mod frontend {
-//! #   use ludviggl_chess::Piece;
-//! #   pub fn render_white_piece(_p: Piece, _x: u8, _y: u8) {}
-//! #   pub fn render_black_piece(_p: Piece, _x: u8, _y: u8) {}
-//! #   pub fn highlight_square(_x: u8, _y: u8) {}
+//! # use ludviggl_chess::Piece;
+//! # pub fn render_white_piece(_p: Piece, _x: u8, _y: u8) {}
+//! # pub fn render_black_piece(_p: Piece, _x: u8, _y: u8) {}
+//! # pub fn highlight_square(_x: u8, _y: u8) {}
 //! # }
 //! # let mut game = Game::new();
 //! for &(piece, x, y) in game.get_white_positions() {
@@ -56,9 +57,10 @@
 //! ### Game logic
 //! ```no_run
 //! use ludviggl_chess::{ Game, Piece, State, };
+//!
 //! # mod frontend {
-//!     pub fn get_clicked_square() -> (u8, u8) { (0, 0,) }
-//!     pub fn game_over() {}
+//! #    pub fn get_clicked_square() -> (u8, u8) { (0, 0,) }
+//! #    pub fn game_over() {}
 //! # }
 //! # let mut game = Game::new();
 //! // assuming frontend::get_clicked_square() only returns valid positions:

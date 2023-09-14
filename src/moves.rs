@@ -8,6 +8,10 @@ lazy_static! (
 pub struct Moves {
     pub(crate) king_moves:   [u64; 64],
     pub(crate) knight_moves: [u64; 64],
+    // pawn moves/attacks in both directions, mus be masked
+    // depending on player
+    pub(crate) pawn_moves:   [u64; 64],
+    pub(crate) pawn_attacks: [u64; 64],
     pub(crate) east:         [u64; 64],
     pub(crate) north_east:   [u64; 64],
     pub(crate) north:        [u64; 64],
@@ -16,6 +20,8 @@ pub struct Moves {
     pub(crate) south_west:   [u64; 64],
     pub(crate) south:        [u64; 64],
     pub(crate) south_east:   [u64; 64],
+    pub(crate) diag_pos:     [u64; 64],
+    pub(crate) diag_neg:     [u64; 64],
 }
 
 const KING_KERNEL: &[(i8, i8)] = &[
@@ -30,7 +36,16 @@ const KNIGHT_KERNEL: &[(i8, i8)] = &[
     /*                                         */
     (-2,  1), /*                      */ (2,  1),
     /*    */  (-1,  2), /*  */  (1,  2), /*    */
+];
 
+const PAWN_MOVE_KERNEL: &[(i8, i8)] = &[
+    (0, -1), (0, 1),
+];
+
+const PAWN_ATTACK_KERNEL: &[(i8, i8)] = &[
+    (-1, -1), /*    */ (1, -1),
+    /*                       */
+    (-1,  1), /*    */ (1,  1),
 ];
 
 fn is_valid(p: (i8, i8)) -> bool {
@@ -54,6 +69,8 @@ impl Moves {
         let mut moves = Moves { 
             king_moves:   [0; 64],
             knight_moves: [0; 64],
+            pawn_moves:   [0; 64],
+            pawn_attacks: [0; 64],
             east:         [0; 64],
             north_east:   [0; 64],
             north:        [0; 64],
@@ -62,6 +79,8 @@ impl Moves {
             south_west:   [0; 64],
             south:        [0; 64],
             south_east:   [0; 64],
+            diag_pos:     [0; 64],
+            diag_neg:     [0; 64],
         };
 
         // King and knight moves
@@ -84,6 +103,24 @@ impl Moves {
                 }
             }
             moves.knight_moves[i] = m;
+
+            m = 0; 
+            for p in PAWN_MOVE_KERNEL {
+                match restrict(offset(o, *p)) {
+                    None => (),
+                    Some(p) => m |= utils::flatten_bit(p.0, p.1),
+                }
+            }
+            moves.pawn_moves[i] = m;
+
+            m = 0; 
+            for p in PAWN_ATTACK_KERNEL {
+                match restrict(offset(o, *p)) {
+                    None => (),
+                    Some(p) => m |= utils::flatten_bit(p.0, p.1),
+                }
+            }
+            moves.pawn_attacks[i] = m;
         }
 
         // North
@@ -115,30 +152,21 @@ impl Moves {
         }
 
         // Diagonals
-        let dn = 0x8040201008040201;
-        let dp = 0x0102040810204080;
         let mut b = 1;
-        for i in 0..64 {
+        for i in 0usize..64 {
 
             // Negative
-            let p = utils::unflatten(i);
-            let m = if p.0 >= p.1 {
-                dn >> ((p.0 - p.1) << 3)
-            } else {
-                dn << ((p.1 - p.0) << 3)
-            };
+            let m = utils::neg_diag_through(b);
 
             // Mask diagonals to get rays
+            moves.diag_neg[i]   = m;
             moves.north_west[i] = m & utils::fill_left_excl(b);
             moves.south_east[i] = m & utils::fill_right_excl(b);
 
-            let z = 7 - p.0;
-            let m = if z >= p.1 {
-                dp >> ((z - p.1) << 3)
-            } else {
-                dp << ((p.1 - z) << 3)
-            };
+            // Positive
+            let m = utils::pos_diag_through(b);
 
+            moves.diag_pos[i]   = m;
             moves.north_east[i] = m & utils::fill_left_excl(b);
             moves.south_west[i] = m & utils::fill_right_excl(b);
 

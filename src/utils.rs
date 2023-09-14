@@ -32,28 +32,106 @@ pub fn unflatten_bit(m: u64) -> (u8, u8) {
 // Fills bits left of ls 1 of m, incl ls 1
 // FIlls all if m == 0
 pub fn fill_left_incl(m: u64) -> u64 {
-    if m > 0 { shl_unchecked(FILL, m.trailing_zeros().into()) }
-    else { FILL }
+    let f = shl_unchecked(FILL, m.trailing_zeros().into());
+    f | ((m == 0) as u64 * FILL)
 }
 
 pub fn fill_left_excl(m: u64) -> u64 {
-    if m > 0 { shl_unchecked(FILL, (m.trailing_zeros() + 1).into()) }
-    else { FILL }
+    let f = shl_unchecked(FILL, (m.trailing_zeros() + 1).into());
+    f | ((m == 0) as u64 * FILL)
 }
 
 pub fn fill_right_incl(m: u64) -> u64 {
-    if m > 0 { shr_unchecked(FILL, m.leading_zeros().into()) }
-    else { FILL }
+    let f = shr_unchecked(FILL, m.leading_zeros().into());
+    f | ((m == 0) as u64 * FILL)
 }
 
 pub fn fill_right_excl(m: u64) -> u64 {
-    if m > 0 { shr_unchecked(FILL, (m.leading_zeros() + 1).into()) }
-    else { FILL }
+    let f = shr_unchecked(FILL, (m.leading_zeros() + 1).into());
+    f | ((m == 0) as u64 * FILL)
+}
+
+// fill between bits b1 & b2, including b1 & b2
+pub fn fill_between_incl(b1: u64, b2: u64) -> u64 {
+    (fill_left_incl(b1) & fill_right_incl(b2)) |
+    (fill_left_incl(b2) & fill_right_incl(b1))
+}
+
+pub fn fill_between_excl(b1: u64, b2: u64) -> u64 {
+    (fill_left_excl(b1) & fill_right_excl(b2)) |
+    (fill_left_excl(b2) & fill_right_excl(b1))
+}
+
+pub fn neg_diag_through(b: u64) -> u64 {
+
+    const DN: u64 = 0x8040201008040201;
+    let p = unflatten_bit(b);
+
+    if p.0 >= p.1 {
+        DN >> ((p.0 - p.1) << 3)
+    } else {
+        DN << ((p.1 - p.0) << 3)
+    }
+}
+
+pub fn pos_diag_through(b: u64) -> u64 {
+
+    const DP: u64 = 0x0102040810204080;
+    let p = unflatten_bit(b);
+    let z = 7 - p.0;
+
+    if z >= p.1 {
+        DP >> ((z - p.1) << 3)
+    } else {
+        DP << ((p.1 - z) << 3)
+    }
+}
+
+// gets ray between bits, icluding endpoints
+// returns 0 if not on same diagonal
+pub fn diag_ray_between_incl(b1: u64, b2: u64) -> u64 {
+
+    let dn = neg_diag_through(b1);
+    let dp = pos_diag_through(b1);
+    let d = (dn * (dn & b2 != 0) as u64) | 
+        (dp * (dp & b2 != 0) as u64);
+    d & fill_between_incl(b1, b2)
+}
+
+pub fn ortho_ray_between_incl(b1: u64, b2: u64) -> u64 {
+    
+    let h = byte_mask(b1.trailing_zeros().try_into().unwrap());
+    let v = col_mask(b1.trailing_zeros().try_into().unwrap());
+    let o = (h * (h & b2 != 0) as u64) |
+        (v * (v & b2 != 0) as u64);
+    o & fill_between_incl(b1, b2)
+}
+
+pub fn diag_ray_between_excl(b1: u64, b2: u64) -> u64 {
+
+    let dn = neg_diag_through(b1);
+    let dp = pos_diag_through(b1);
+    let d = (dn * (dn & b2 != 0) as u64) | 
+        (dp * (dp & b2 != 0) as u64);
+    d & fill_between_excl(b1, b2)
+}
+
+pub fn ortho_ray_between_excl(b1: u64, b2: u64) -> u64 {
+    
+    let h = byte_mask(b1.trailing_zeros().try_into().unwrap());
+    let v = col_mask(b1.trailing_zeros().try_into().unwrap());
+    let o = (h * (h & b2 != 0) as u64) |
+        (v * (v & b2 != 0) as u64);
+    o & fill_between_excl(b1, b2)
 }
 
 // Fills byte containg bit number i
 pub fn byte_mask(i: usize) -> u64 {
     0xff << (i & 0b111000)
+}
+
+pub fn col_mask(i: usize) -> u64 {
+    0x0101010101010101 << (i & 0b111)
 }
 
 pub fn _print_bitboard(b: u64) {
@@ -132,5 +210,23 @@ mod test {
     fn bytemask() {
         let i = 10;
         assert_eq!(byte_mask(i), 0xff00);
+    }
+
+    #[test]
+    fn fill_between_() {
+        let b1 = 0b000010000;
+        let b2 = 0b100000000;
+        let e  = 0b111110000;
+        assert_eq!(fill_between_incl(b1, b2), e);
+    }
+
+    #[test]
+    fn ortho_ray_between_() {
+        let b1 = 0x000002;
+        let b2 = 0x020000;
+        let e  = 0x020202;
+        assert_eq!(ortho_ray_between_incl(b1, b2), e);
+        let b2 = 0x040000;
+        assert_eq!(ortho_ray_between_incl(b1, b2), 0);
     }
 }

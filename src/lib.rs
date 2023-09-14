@@ -20,31 +20,47 @@
 //! Functions not in this crate or prepended with `frontend::`,
 //! and are just example functions.
 //! ### Initializing
-//! ```ignore
+//! ```no_run
+//! use ludviggl_chess::Game;
 //! let mut game = Game::new();
 //! ```
 //! ### Rendering
-//! ```ignore
-//! let mut game = Game::new();
-//! for (piece, x, y) in game.get_white_positions() {
+//! ```no_run
+//! use ludviggl_chess::{ Game, Piece, State, };
+//! # mod frontend {
+//! #   use ludviggl_chess::Piece;
+//! #   pub fn render_white_piece(_p: Piece, _x: u8, _y: u8) {}
+//! #   pub fn render_black_piece(_p: Piece, _x: u8, _y: u8) {}
+//! #   pub fn highlight_square(_x: u8, _y: u8) {}
+//! # }
+//! # let mut game = Game::new();
+//! for &(piece, x, y) in game.get_white_positions() {
 //!     frontend::render_white_piece(piece, x, y);
 //! }
 //!
-//! for (piece, x, y) in game.get_black_positions() {
+//! for &(piece, x, y) in game.get_black_positions() {
 //!     frontend::render_black_piece(piece, x, y);
 //! }
 //!
 //! match game.get_state() {
 //!     State::SelectMove => {
-//!         for (x, y) in game.get_moves() {
-//!             frontend::highlight_square(x, y);
+//!         if let Ok(moves) = game.get_moves() {
+//!             for &(x, y) in moves {
+//!                 frontend::highlight_square(x, y);
+//!             }
 //!         }
 //!     },
 //!     _ => (),
 //! };
 //! ```
 //! ### Game logic
-//! ```ignore
+//! ```no_run
+//! use ludviggl_chess::{ Game, Piece, State, };
+//! # mod frontend {
+//!     pub fn get_clicked_square() -> (u8, u8) { (0, 0,) }
+//!     pub fn game_over() {}
+//! # }
+//! # let mut game = Game::new();
 //! // assuming frontend::get_clicked_square() only returns valid positions:
 //! match game.get_state() {
 //!     State::SelectPiece => {
@@ -56,20 +72,24 @@
 //!         let (x, y) = frontend::get_clicked_square();
 //!         game.select_move(x, y).unwrap(); // we know state is State::SelectMove
 //!                                           // and position is valid, hence .unwrap()
-//!     }
+//!     },
+//!     State::CheckMate => {
+//!         frontend::game_over();
+//!     },
 //! }
 //! ```
 
 #[macro_use]
 extern crate lazy_static;
 
-mod piece;
-mod player;
-mod game;
+pub mod piece;
+pub mod player;
+pub mod game;
 mod board;
+#[allow(dead_code)]
 mod utils;
 mod moves;
-mod error;
+pub mod error;
 
 pub use piece::Piece;
 pub use player::Player;

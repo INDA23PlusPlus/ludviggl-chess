@@ -24,6 +24,8 @@ pub enum State {
     SelectPiece,
     /// Current player needs to select a move to play for select piece.
     SelectMove,
+    /// Current player is in checkmate.
+    CheckMate,
 }
 
 impl Game {
@@ -86,7 +88,7 @@ impl Game {
 
         match self.board.id_from_pos(x, y) {
             None => (), // no piece at pos
-            Some(id) => match self.board.get_pseudo(id) {
+            Some(id) => match self.board.get_legal_moves(id) {
                 0 => (), // no legal moves
                 m => {
                     self.selected_id = id;
@@ -138,6 +140,10 @@ impl Game {
         self.state = State::SelectPiece;
 
         self.update_positions();
+
+        if self.board.is_checkmate() {
+            self.state = State::CheckMate;
+        }
 
         Ok(())
     }

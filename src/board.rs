@@ -223,7 +223,6 @@ impl Board {
 
         single &= !opp_mask;
         single &= !curr_mask;
-        moves |= single;
 
         let first;
         let mut double;
@@ -245,6 +244,7 @@ impl Board {
         // Can only move to free squares
         single &= !curr_mask;
         single &= !opp_mask;
+        moves |= single;
         
         // Can only move double if first row and single move
         if single > 0 && first {

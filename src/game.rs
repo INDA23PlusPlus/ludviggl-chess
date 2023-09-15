@@ -11,6 +11,7 @@ use crate::{
 pub struct Game {
     state: State,
     board: Board,
+    selected_pos: (u8, u8),
     selected_id: usize,
     selected_moves: (u64, Vec<(u8, u8)>),
     black_positions: Vec<(Piece, u8, u8)>,
@@ -35,6 +36,7 @@ impl Game {
         let mut game = Game {
             state: State::SelectPiece,
             board: Board::new(),
+            selected_pos: (0, 0),
             selected_id: 0,
             selected_moves: (0, Vec::new()),
             black_positions: Vec::new(),
@@ -59,7 +61,7 @@ impl Game {
     pub fn get_current_player(&self) -> Player {
         self.board.player
     }
-    
+
     /// Returns black pieces and their positions
     pub fn get_black_positions(&self) -> &[(Piece, u8, u8)] {
         &self.black_positions[..]
@@ -91,6 +93,7 @@ impl Game {
             Some(id) => match self.board.get_legal_moves(id) {
                 0 => (), // no legal moves
                 m => {
+                    self.selected_pos = (x, y);
                     self.selected_id = id;
                     self.selected_moves.0 = m;
                     self.selected_moves.1 = utils::BitIterator::new(m)
@@ -115,6 +118,16 @@ impl Game {
         Ok(&self.selected_moves.1[..])
     }
 
+    /// Returns position of currently selected piece.
+    /// Returns [Error::InvalidState] if game state is not [State::SelectMove].
+    pub fn get_selected_pos(&self) -> Result<(u8, u8), Error> {
+
+        if !matches!(self.state, State::SelectMove) {
+            return Err(Error::InvalidState);
+        }
+
+        Ok(self.selected_pos)
+    }
 
     /// Selects a move by corresponding position and executes it.
     /// If position does not correspond to a legal move, reverts state

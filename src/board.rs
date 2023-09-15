@@ -565,13 +565,14 @@ impl<'a> Iterator for TeamIterator<'a> {
             // piece may be captured
             while bit == 0 {
                 self.id += 1;
-                if self.id == 16 {
+                if self.id >= 16 {
                     return None;
                 }
                 bit = self.team.positions[self.id];
             }
             let pos = utils::unflatten_bit(bit);
             let piece = index::into_piece(self.id);
+            self.id += 1;
             Some((piece, pos.0, pos.1)) 
         } else { None }
     }

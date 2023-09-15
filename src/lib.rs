@@ -9,11 +9,13 @@
 //! positions.
 //! * [Game::get_moves]: get all destination positions corresponding to legal moves for piece
 //! previously selected with [Game::select_piece].
+//! * [Game::get_selected_pos]: get position of piece selected with [Game::select_piece].
 //!
 //! Some methods are associated with a certain state, and returns [Error::InvalidState] if called when game is
 //! in a different state. These methods are:
 //! * [Game::select_piece]: may only be called when game state is [State::SelectPiece].
 //! * [Game::get_moves]: may only be called when game state is [State::SelectMove].
+//! * [Game::get_selected_piece]: may only be called when game state is [State::SelectMove].
 //! * [Game::select_move]: may only be called when game state is [State::SelectMove].
 //!
 //! ## Examples

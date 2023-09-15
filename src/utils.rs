@@ -29,26 +29,21 @@ pub fn unflatten_bit(m: u64) -> (u8, u8) {
     unflatten(m.trailing_zeros() as usize)
 }
 
-// Fills bits left of ls 1 of m, incl ls 1
-// FIlls all if m == 0
+// Fills bits left of ms 1 of m, incl ms 1
 pub fn fill_left_incl(m: u64) -> u64 {
-    let f = shl_unchecked(FILL, m.trailing_zeros().into());
-    f | ((m == 0) as u64 * FILL)
+    shl_unchecked(FILL, m.trailing_zeros().into())
 }
 
 pub fn fill_left_excl(m: u64) -> u64 {
-    let f = shl_unchecked(FILL, (m.trailing_zeros() + 1).into());
-    f | ((m == 0) as u64 * FILL)
+    shl_unchecked(FILL, (m.trailing_zeros() + 1).into())
 }
 
 pub fn fill_right_incl(m: u64) -> u64 {
-    let f = shr_unchecked(FILL, m.leading_zeros().into());
-    f | ((m == 0) as u64 * FILL)
+    shr_unchecked(FILL, m.leading_zeros().into())
 }
 
 pub fn fill_right_excl(m: u64) -> u64 {
-    let f = shr_unchecked(FILL, (m.leading_zeros() + 1).into());
-    f | ((m == 0) as u64 * FILL)
+    shr_unchecked(FILL, (m.leading_zeros() + 1).into())
 }
 
 // fill between bits b1 & b2, including b1 & b2
@@ -186,11 +181,23 @@ mod test {
     
     #[test]
     fn fill() {
-        let x = 0x00_00_00_00_08_00_00_00;
-        assert_eq!(fill_left_incl(x), 0xff_ff_ff_ff_f8_00_00_00);
-        assert_eq!(fill_left_excl(x), 0xff_ff_ff_ff_f0_00_00_00);
-        assert_eq!(fill_right_incl(x), 0x00_00_00_00_0f_ff_ff_ff);
-        assert_eq!(fill_right_excl(x), 0x00_00_00_00_07_ff_ff_ff);
+        let x = 0x00_00_00_00_0a_00_00_00;
+        let v = fill_left_incl(x);
+        let e = 0xff_ff_ff_ff_fe_00_00_00;
+        println!("x: {:#066b}\nv: {:#066b}\ne: {:#066b}", x, v, e);
+        assert_eq!(v, e);
+        let v = fill_left_excl(x);
+        let e = 0xff_ff_ff_ff_fc_00_00_00;
+        println!("x: {:#066b}\nv: {:#066b}\ne: {:#066b}", x, v, e);
+        assert_eq!(v, e);
+        let v = fill_right_incl(x);
+        let e = 0x00_00_00_00_0f_ff_ff_ff;
+        println!("x: {:#066b}\nv: {:#066b}\ne: {:#066b}", x, v, e);
+        assert_eq!(v, e);
+        let v = fill_right_excl(x);
+        let e = 0x00_00_00_00_07_ff_ff_ff;
+        println!("x: {:#066b}\nv: {:#066b}\ne: {:#066b}", x, v, e);
+        assert_eq!(v, e);
     }
 
     #[test]

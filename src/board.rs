@@ -268,24 +268,24 @@ impl Board {
         let curr_mask = self.current.pos_mask();
         
         // north
-        let opp_block   = utils::fill_right_incl(MOVES.north[pos_id] & opp_mask);
-        let curr_block  = utils::fill_right_excl(MOVES.north[pos_id] & curr_mask);
-        moves          |= MOVES.north[pos_id] & opp_block & curr_block;
+        let opp_block   = utils::fill_left_excl(MOVES.north[pos_id] & opp_mask);
+        let curr_block  = utils::fill_left_incl(MOVES.north[pos_id] & curr_mask);
+        moves          |= MOVES.north[pos_id] & !opp_block & !curr_block;
 
         // west
-        let opp_block   = utils::fill_right_incl(MOVES.west[pos_id] & opp_mask);
-        let curr_block  = utils::fill_right_excl(MOVES.west[pos_id] & curr_mask);
-        moves          |= MOVES.west[pos_id] & opp_block & curr_block;
+        let opp_block   = utils::fill_left_excl(MOVES.west[pos_id] & opp_mask);
+        let curr_block  = utils::fill_left_incl(MOVES.west[pos_id] & curr_mask);
+        moves          |= MOVES.west[pos_id] & !opp_block & !curr_block;
         
         // south
-        let opp_block   = utils::fill_left_incl(MOVES.south[pos_id] & opp_mask);
-        let curr_block  = utils::fill_left_excl(MOVES.south[pos_id] & curr_mask);
-        moves          |= MOVES.south[pos_id] & opp_block & curr_block;
+        let opp_block   = utils::fill_right_excl(MOVES.south[pos_id] & opp_mask);
+        let curr_block  = utils::fill_right_incl(MOVES.south[pos_id] & curr_mask);
+        moves          |= MOVES.south[pos_id] & !opp_block & !curr_block;
 
         // east
-        let opp_block   = utils::fill_left_incl(MOVES.east[pos_id] & opp_mask);
-        let curr_block  = utils::fill_left_excl(MOVES.east[pos_id] & curr_mask);
-        moves          |= MOVES.east[pos_id] & opp_block & curr_block;
+        let opp_block   = utils::fill_right_excl(MOVES.east[pos_id] & opp_mask);
+        let curr_block  = utils::fill_right_incl(MOVES.east[pos_id] & curr_mask);
+        moves          |= MOVES.east[pos_id] & !opp_block & !curr_block;
         
         moves
     }
@@ -298,24 +298,24 @@ impl Board {
         let curr_mask = self.current.pos_mask();
 
         // north_east
-        let opp_block   = utils::fill_right_incl(MOVES.north_east[pos_id] & opp_mask);
-        let curr_block  = utils::fill_right_excl(MOVES.north_east[pos_id] & curr_mask);
-        moves          |= MOVES.north_east[pos_id] & opp_block & curr_block;
+        let opp_block   = utils::fill_left_excl(MOVES.north_east[pos_id] & opp_mask);
+        let curr_block  = utils::fill_left_incl(MOVES.north_east[pos_id] & curr_mask);
+        moves          |= MOVES.north_east[pos_id] & !opp_block & !curr_block;
 
         // north_west
-        let opp_block   = utils::fill_right_incl(MOVES.north_west[pos_id] & opp_mask);
-        let curr_block  = utils::fill_right_excl(MOVES.north_west[pos_id] & curr_mask);
-        moves          |= MOVES.north_west[pos_id] & opp_block & curr_block;
+        let opp_block   = utils::fill_left_excl(MOVES.north_west[pos_id] & opp_mask);
+        let curr_block  = utils::fill_left_incl(MOVES.north_west[pos_id] & curr_mask);
+        moves          |= MOVES.north_west[pos_id] & !opp_block & !curr_block;
         
         // south_east
-        let opp_block   = utils::fill_left_incl(MOVES.south_east[pos_id] & opp_mask);
-        let curr_block  = utils::fill_left_excl(MOVES.south_east[pos_id] & curr_mask);
-        moves          |= MOVES.south_east[pos_id] & opp_block & curr_block;
+        let opp_block   = utils::fill_right_excl(MOVES.south_east[pos_id] & opp_mask);
+        let curr_block  = utils::fill_right_incl(MOVES.south_east[pos_id] & curr_mask);
+        moves          |= MOVES.south_east[pos_id] & !opp_block & !curr_block;
 
         // south_west
-        let opp_block   = utils::fill_left_incl(MOVES.south_west[pos_id] & opp_mask);
-        let curr_block  = utils::fill_left_excl(MOVES.south_west[pos_id] & curr_mask);
-        moves          |= MOVES.south_west[pos_id] & opp_block & curr_block;
+        let opp_block   = utils::fill_right_excl(MOVES.south_west[pos_id] & opp_mask);
+        let curr_block  = utils::fill_right_incl(MOVES.south_west[pos_id] & curr_mask);
+        moves          |= MOVES.south_west[pos_id] & !opp_block & !curr_block;
         
         moves
     }

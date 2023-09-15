@@ -448,7 +448,13 @@ impl Board {
                 let opp_pos = self.opponent.positions[opp_id];
                 // Piece may be captured
                 if opp_pos == 0 { continue; }
-                let ray = utils::ortho_ray_between_excl(opp_pos, mov);
+                let ray = utils::ortho_ray_between_incl(opp_pos, mov);
+                // Right next to
+                if ray.count_ones() == 2 {
+                    moves &= !mov;
+                    continue 'iter_moves;
+                }
+                // Not blocked
                 if ray > 0 && ray & curr_mask == 0 {
                     moves &= !mov;
                     continue 'iter_moves;
@@ -461,7 +467,13 @@ impl Board {
                 let opp_pos = self.opponent.positions[opp_id];
                 // Piece may be captured
                 if opp_pos == 0 { continue; }
-                let ray = utils::diag_ray_between_excl(opp_pos, mov);
+                let ray = utils::diag_ray_between_incl(opp_pos, mov);
+                // Right next to
+                if ray.count_ones() == 2 {
+                    moves &= !mov;
+                    continue 'iter_moves;
+                }
+                // Not blocked
                 if ray > 0 && ray & curr_mask == 0 {
                     moves &= !mov;
                     continue 'iter_moves;

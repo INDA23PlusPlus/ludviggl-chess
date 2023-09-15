@@ -74,7 +74,6 @@ impl Game {
 
     /// Selects a piece by position on the board.
     /// If position is occupied by the current player, transitions state to [State::SelectMove].
-    /// If piece corresponding to position has no legal moves, does nothing.
     /// If position is empty or occupied by opponent, does nothing.
     /// Returns [Error::InvalidState] if game state is not [State::SelectPiece].
     /// Returns [Error::InvalidPosition] if position is not on the board.
@@ -88,26 +87,32 @@ impl Game {
             return Err(Error::InvalidPosition);
         }
 
+        self.selected_moves.0 = 0;
+        self.selected_moves.1.clear();
+
         match self.board.id_from_pos(x, y) {
             None => (), // no piece at pos
-            Some(id) => match self.board.get_legal_moves(id) {
-                0 => (), // no legal moves
-                m => {
+            Some(id) => {
                     self.selected_pos = (x, y);
                     self.selected_id = id;
-                    self.selected_moves.0 = m;
-                    self.selected_moves.1 = utils::BitIterator::new(m)
-                                            .map(|x| utils::unflatten_bit(x))
-                                            .collect::<Vec<_>>();
                     self.state = State::SelectMove;
-                }
-            }
-        }
+
+                    match self.board.get_legal_moves(id) {
+                        0 => (), // no legal moves
+                        m => {
+                            self.selected_moves.0 = m;
+                            self.selected_moves.1 = utils::BitIterator::new(m)
+                                                    .map(|x| utils::unflatten_bit(x))
+                                                    .collect::<Vec<_>>();
+                        }
+                    };
+            },
+        };
         Ok(())
     }
 
     /// Returns positions corresponding to the legal moves for piece selected with
-    /// [Game::select_piece].
+    /// [Game::select_piece]. Can be empty slice.
     /// Returns [Error::InvalidState] if game state is not [State::SelectMove].
     pub fn get_moves(&self) -> Result<&[(u8, u8)], Error> {
 

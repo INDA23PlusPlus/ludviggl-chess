@@ -109,7 +109,7 @@ impl Game {
     /// Returns positions corresponding to the legal moves for piece selected with
     /// [Game::select_piece].
     /// Returns [Error::InvalidState] if game state is not [State::SelectMove].
-    pub fn get_moves(&mut self) -> Result<&[(u8, u8)], Error> {
+    pub fn get_moves(&self) -> Result<&[(u8, u8)], Error> {
 
         if !matches!(self.state, State::SelectMove) {
             return Err(Error::InvalidState);

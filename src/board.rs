@@ -345,6 +345,8 @@ impl Board {
     }
 
     fn ortho_can_reach(pos: u64, target: u64, blk: u64) -> bool {
+
+        if pos == 0 { return false; }
         
         let ray = utils::ortho_ray_between_incl(pos, target);
     
@@ -358,6 +360,8 @@ impl Board {
     }
 
     fn diag_can_reach(pos: u64, target: u64, blk: u64) -> bool {
+
+        if pos == 0 { return false; }
         
         let ray = utils::diag_ray_between_incl(pos, target);
     

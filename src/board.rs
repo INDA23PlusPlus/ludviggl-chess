@@ -415,6 +415,10 @@ impl Board {
 
             for &p in &opp_pos[ROOK[0]..=QUEEN] {
                 if Self::ortho_can_reach(p, mov, curr | opp) {
+                    if p == mov {
+                        // We can capture it
+                        continue;
+                    }
                     moves &= !mov;
                     continue 'outer;
                 }
@@ -422,6 +426,10 @@ impl Board {
 
             for &p in &opp_pos[QUEEN..=BISHOP[1]] {
                 if Self::diag_can_reach(p, mov, curr | opp) {
+                    if p == mov {
+                        // We can capture it
+                        continue;
+                    }
                     moves &= !mov;
                     continue 'outer;
                 }

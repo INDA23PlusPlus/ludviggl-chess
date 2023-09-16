@@ -59,6 +59,8 @@ pub fn fill_between_excl(b1: u64, b2: u64) -> u64 {
 
 pub fn neg_diag_through(b: u64) -> u64 {
 
+    debug_assert!(b > 0);
+
     const DN: u64 = 0x8040201008040201;
     let p = unflatten_bit(b);
 
@@ -70,6 +72,8 @@ pub fn neg_diag_through(b: u64) -> u64 {
 }
 
 pub fn pos_diag_through(b: u64) -> u64 {
+
+    debug_assert!(b > 0);
 
     const DP: u64 = 0x0102040810204080;
     let p = unflatten_bit(b);

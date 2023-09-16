@@ -165,7 +165,8 @@ impl Board {
                 curr,
                 opp,
                 &opp_team.positions,
-                curr_team.positions[index::KING]
+                curr_team.positions[index::KING],
+                self.player
             );
 
             moves = Self::restrict(moves, pins);
@@ -439,11 +440,39 @@ impl Board {
         moves
     }
 
-    fn comp_pins(pos: u64, curr: u64, opp: u64, opp_pos: &[u64], king_pos: u64) -> u64 {
+    fn comp_pins(
+        pos: u64,
+        curr: u64,
+        opp: u64,
+        opp_pos: &[u64],
+        king_pos: u64,
+        player: Player
+    ) -> u64 {
 
         let mut pins = !0u64;
+        let king_id = pos.trailing_zeros() as usize;
         
-        use index::*;
+        use { index::*, Player::*, };
+        
+        let pwn_att = MOVES.pawn_attacks[king_id] & match player {
+            White => utils::fill_left_excl(king_pos),
+            Black => utils::fill_right_excl(king_pos),
+        };
+
+        for &p in &opp_pos[PAWN[0]..=PAWN[7]] {
+            if pwn_att & p > 0 {
+                pins &= p;
+            }
+        }
+
+        let kn_mov = MOVES.knight_moves[king_id];
+
+        for &p in &opp_pos[KNIGHT[0]..=KNIGHT[1]] {
+            if kn_mov & p > 0 {
+                pins &= p;
+            }
+        }
+
         for &o in &opp_pos[ROOK[0]..=QUEEN] {
             
             let ray = utils::ortho_ray_between_excl(king_pos, o);

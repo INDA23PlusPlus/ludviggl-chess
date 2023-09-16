@@ -447,7 +447,14 @@ impl Board {
         for &o in &opp_pos[ROOK[0]..=QUEEN] {
             
             let ray = utils::ortho_ray_between_excl(king_pos, o);
-            if ray == 0 { continue; }
+            if ray == 0 {
+                // It might be adjacent, in which case ray is empty
+                // Thus we check inclusive ray
+                if utils::ortho_ray_between_incl(king_pos, o) > 0 {
+                    pins &= o;
+                }
+                continue;
+            }
             let blockers = (ray & (curr | opp)).count_ones();
             if blockers == 0 || // Not blocked, must be blocked or captured
                 blockers == 1 && ray & pos > 0 // Only blocker, must stay in lane or capture
@@ -459,7 +466,14 @@ impl Board {
         for &d in &opp_pos[QUEEN..=BISHOP[1]] {
             
             let ray = utils::diag_ray_between_excl(king_pos, d);
-            if ray == 0 { continue; }
+            if ray == 0 {
+                // It might be adjacent, in which case ray is empty
+                // Thus we check inclusive ray
+                if utils::diag_ray_between_incl(king_pos, d) > 0 {
+                    pins &= d;
+                }
+                continue;
+            }
             let blockers = (ray & (curr | opp)).count_ones();
             if blockers == 0 || // Not blocked, must be blocked or captured
                 blockers == 1 && ray & pos > 0 // Only blocker, must stay in lane or capture

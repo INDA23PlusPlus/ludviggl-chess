@@ -34,51 +34,15 @@ mod index {
 
 #[derive(Clone, Copy, Default)]
 struct Team {
-    // bitboard with one bit set, corresponding to piece's position
-    // if ==0, piece is captured
     positions: [u64; PIECE_COUNT],
-    // if > 0, locks correspnding piece to line/rank/diagonal
-    pins: [u64; PIECE_COUNT],
-    // positions of *opponent* pieces attacking king
-    // if > 0, king is in check
-    attacks: u64,
-    // rays from *current* pieces attacking king ( may be blocked )
-    sliding_attacks: [u64; PIECE_COUNT],
 }
 
 impl Team {
-
-    pub fn pos_mask(&self) -> u64 {
+    
+    fn mask(self: &Self) -> u64 {
         let mut m = 0;
-        for p in self.positions.iter() {
-            m |= p;
-        }
-        m
-    }
-
-    #[allow(dead_code)]
-    pub fn ortho_mask(&self) -> u64 {
-        self.positions[index::ROOK[0]] | 
-        self.positions[index::ROOK[1]] | 
-        self.positions[index::QUEEN]
-    }
-
-    #[allow(dead_code)]
-    pub fn diag_mask(&self) -> u64 {
-        self.positions[index::QUEEN] |
-        self.positions[index::BISHOP[0]] | 
-        self.positions[index::BISHOP[1]]
-    }
-
-    pub fn knight_mask(&self) -> u64 {
-        self.positions[index::KNIGHT[0]] | 
-        self.positions[index::KNIGHT[1]]
-    }
-
-    pub fn pawn_mask(&self) -> u64 {
-        let mut m = 0;
-        for p in &self.positions[index::PAWN[0]..] {
-            m |= p;
+        for &p in &self.positions[..] {
+            m |= p; 
         }
         m
     }
@@ -86,8 +50,8 @@ impl Team {
 
 #[derive(Default)]
 pub struct Board {
-    current: Team,
-    opponent: Team,
+    white: Team,
+    black: Team,
     pub player: Player,
 }
 
@@ -98,460 +62,403 @@ impl Board {
         use { index::*, utils::*, };
         let mut b = Board { player: Player::White, ..Default::default() };
 
-        b.current.positions[ROOK[0]]   = flatten_bit(0, 0);
-        b.current.positions[KNIGHT[0]] = flatten_bit(1, 0);
-        b.current.positions[BISHOP[0]] = flatten_bit(2, 0);
-        b.current.positions[QUEEN]     = flatten_bit(3, 0);
-        b.current.positions[KING]      = flatten_bit(4, 0);
-        b.current.positions[BISHOP[1]] = flatten_bit(5, 0);
-        b.current.positions[KNIGHT[1]] = flatten_bit(6, 0);
-        b.current.positions[ROOK[1]]   = flatten_bit(7, 0);
+        b.white.positions[ROOK[0]]   = flatten_bit(0, 0);
+        b.white.positions[KNIGHT[0]] = flatten_bit(1, 0);
+        b.white.positions[BISHOP[0]] = flatten_bit(2, 0);
+        b.white.positions[QUEEN]     = flatten_bit(3, 0);
+        b.white.positions[KING]      = flatten_bit(4, 0);
+        b.white.positions[BISHOP[1]] = flatten_bit(5, 0);
+        b.white.positions[KNIGHT[1]] = flatten_bit(6, 0);
+        b.white.positions[ROOK[1]]   = flatten_bit(7, 0);
         
         for i in 0..8 {
-            b.current.positions[PAWN[i]] = flatten_bit(i as u8, 1);
+            b.white.positions[PAWN[i]] = flatten_bit(i as u8, 1);
         }
 
-        b.opponent.positions[ROOK[0]]   = flatten_bit(0, 7);
-        b.opponent.positions[KNIGHT[0]] = flatten_bit(1, 7);
-        b.opponent.positions[BISHOP[0]] = flatten_bit(2, 7);
-        b.opponent.positions[QUEEN]     = flatten_bit(3, 7);
-        b.opponent.positions[KING]      = flatten_bit(4, 7);
-        b.opponent.positions[BISHOP[1]] = flatten_bit(5, 7);
-        b.opponent.positions[KNIGHT[1]] = flatten_bit(6, 7);
-        b.opponent.positions[ROOK[1]]   = flatten_bit(7, 7);
+        b.black.positions[ROOK[0]]   = flatten_bit(0, 7);
+        b.black.positions[KNIGHT[0]] = flatten_bit(1, 7);
+        b.black.positions[BISHOP[0]] = flatten_bit(2, 7);
+        b.black.positions[QUEEN]     = flatten_bit(3, 7);
+        b.black.positions[KING]      = flatten_bit(4, 7);
+        b.black.positions[BISHOP[1]] = flatten_bit(5, 7);
+        b.black.positions[KNIGHT[1]] = flatten_bit(6, 7);
+        b.black.positions[ROOK[1]]   = flatten_bit(7, 7);
         
         for i in 0..8 {
-            b.opponent.positions[PAWN[i]] = flatten_bit(i as u8, 6);
+            b.black.positions[PAWN[i]] = flatten_bit(i as u8, 6);
         }
 
         b
     }
 
-    pub fn black_iter(&self) -> TeamIterator {
-        match self.player {
-            Player::White => TeamIterator::new(&self.opponent),
-            Player::Black => TeamIterator::new(&self.current),
-        }
+    pub fn white_iter(self: &Self) -> TeamIterator {
+        TeamIterator::new(&self.white)
     }
 
-    pub fn white_iter(&self) -> TeamIterator {
-        match self.player {
-            Player::White => TeamIterator::new(&self.current),
-            Player::Black => TeamIterator::new(&self.opponent),
-        }
+    pub fn black_iter(self: &Self) -> TeamIterator {
+        TeamIterator::new(&self.black)
     }
 
-    pub fn switch(&mut self) { 
-        (self.current, self.opponent) = (self.opponent, self.current);
-        self.player = match self.player {
-            Player::White => Player::Black,
-            Player::Black => Player::White,
+    pub fn is_checkmate(self: &Self) -> bool {
+        false // TODO
+    }
+
+    pub fn play_move(self: &mut Self, id: usize, mov: u64) {
+
+        use Player::*;
+
+        let (curr_team, opp_team) = match self.player {
+            White => (&mut self.white, &mut self.black, ),
+            Black => (&mut self.black, &mut self.white, ),
         };
-    }
 
-    pub fn get_legal_moves(&self, id: usize) -> u64 {
-
-        let piece = index::into_piece(id);
-
-        let mov = match piece {
-            Piece::Pawn   => self.psuedo_legal_pawn(id),
-            Piece::King   => self.pseudo_legal_king(),
-            Piece::Knight => self.pseudo_legal_knight(id),
-            Piece::Bishop => self.pseudo_legal_diag(id),
-            Piece::Rook   => self.pseudo_legal_ortho(id),
-            Piece::Queen  => self.pseudo_legal_diag(id)
-                           | self.pseudo_legal_ortho(id),
-        };
-        
-        match piece {
-            Piece::King => self.restrict_king_moves(mov),
-            _ => self.restrict_moves(mov, id),
-        }
-    }
-
-    pub fn id_from_pos(&self, x: u8, y: u8) -> Option<usize> {
-        let pos1 = utils::flatten_bit(x, y);
-        for (id, pos2) in self.current.positions.iter().enumerate() {
-            if pos1 & pos2 > 0 {
-                return Some(id);
-            }
-        }
-        None
-    }
-
-    pub fn play_move(&mut self, piece_id: usize, dest: u64) {
-        // move piece 
-        self.current.positions[piece_id] = dest;
-        // check for capture
-        for c in &mut self.opponent.positions {
-            if *c == dest {
-                *c = 0;
+        for p in &mut opp_team.positions[..] {
+            if *p == mov {
+                *p = 0;
                 break;
             }
         }
-        self.switch();
-        self.comp_attacks();
-        self.comp_pins();
+
+        curr_team.positions[id] = mov;
+        self.player = match self.player {
+            White => Black,
+            Black => White,
+        };
     }
 
-    fn pseudo_legal_king(&self) -> u64 {
+    pub fn get_legal_moves(self: &Self, id: usize) -> u64 {
+        
+        let (curr_team, opp_team) = match self.player {
+            Player::White => (&self.white, &self.black, ),
+            Player::Black => (&self.black, &self.white, ),
+        };
 
-        let position = self.current.positions[index::KING];
-        let mut moves = MOVES.king_moves[position.trailing_zeros() as usize];
-        moves &= !self.current.pos_mask();
-        moves
+        let pos = curr_team.positions[id];
+
+        use Piece::*;
+        let curr = curr_team.mask();
+        let opp = opp_team.mask();
+        let mut moves = match index::into_piece(id) {
+            Pawn   => Self::pawn_unrestr(pos, curr, opp, self.player),
+            Knight => Self::knight_unrestr(pos, curr, opp),
+            King   => Self::king_unrestr(pos, curr, opp),
+            Bishop => Self::diag_unrestr(pos, curr, opp),
+            Rook   => Self::ortho_unrestr(pos, curr, opp),
+            Queen  => Self::diag_unrestr(pos, curr, opp)
+                    | Self::ortho_unrestr(pos, curr, opp),
+        };
+
+        if id == index::KING {
+
+            moves = Self::restrict_king(
+                moves,
+                curr,
+                opp,
+                &opp_team.positions,
+                self.player
+            );
+
+        } else {
+
+            let pins = Self::comp_pins(
+                pos,
+                curr,
+                opp,
+                &opp_team.positions,
+                curr_team.positions[index::KING]
+            );
+
+            moves = Self::restrict(moves, pins);
+        }
+
+        moves // TODO: Restrict
     }
 
-    fn pseudo_legal_knight(&self, id: usize) -> u64 {
+    pub fn id_from_pos(self: &Self, x: u8, y: u8) -> Option<usize> {
 
-        let position = self.current.positions[id];
-        let mut moves = MOVES.knight_moves[position.trailing_zeros() as usize];
-        moves &= !self.current.pos_mask();
-        moves
+        let b = utils::flatten_bit(x, y);
+        let ps = &match self.player {
+            Player::White => self.white.positions,
+            Player::Black => self.black.positions,
+        };
+
+        for (id, &p) in ps.iter().enumerate() {
+            if p == b { return Some(id); }
+        }
+
+        None
     }
-    
-    fn psuedo_legal_pawn(&self, id: usize) -> u64 {
 
-        let position = self.current.positions[id];
-        let pos_tup = utils::unflatten_bit(position);
-        let opp_mask = self.opponent.pos_mask();
-        let curr_mask = self.current.pos_mask();
+    fn ortho_unrestr(pos: u64, curr: u64, opp: u64) -> u64 {
+
+        debug_assert!(pos > 0); 
+
         let mut moves = 0;
+        let i = pos.trailing_zeros() as usize;
 
-        let mut single = MOVES.pawn_moves[utils::flatten(pos_tup.0, pos_tup.1)];
-        let mut attack = MOVES.pawn_attacks[utils::flatten(pos_tup.0, pos_tup.1)];
+        let mut m = MOVES.north[i];
+        let cint = m & curr;
+        let oint = m & opp;
+        if cint + oint > 0 {
+            let cblk = utils::fill_left_incl(cint);
+            let oblk = utils::fill_left_excl(oint);
+            m &= !(cblk | oblk);
+        }
+        moves |= m;
 
-        single &= !opp_mask;
-        single &= !curr_mask;
+        let mut m = MOVES.west[i];
+        let cint = m & curr;
+        let oint = m & opp;
+        if cint + oint > 0 {
+            let cblk = utils::fill_left_incl(cint);
+            let oblk = utils::fill_left_excl(oint);
+            m &= !(cblk | oblk);
+        }
+        moves |= m;
 
-        let first;
-        let mut double;
-        match self.player {
-            Player::White => {
-                first = pos_tup.1 == 1;
-                double = single << 8;
-                single &= utils::fill_left_excl(position);
-                attack &= utils::fill_left_excl(position);
-            },
-            Player::Black => {
-                first = pos_tup.1 == 6;
-                double = single >> 8;
-                single &= utils::fill_right_excl(position);
-                attack &= utils::fill_right_excl(position);
-            },
-        };
+        let mut m = MOVES.south[i];
+        let cint = m & curr;
+        let oint = m & opp;
+        if cint + oint > 0 {
+            let cblk = utils::fill_right_incl(cint);
+            let oblk = utils::fill_right_excl(oint);
+            m &= !(cblk | oblk);
+        }
+        moves |= m;
 
-        // Can only move to free squares
-        single &= !curr_mask;
-        single &= !opp_mask;
-        moves |= single;
-        
-        // Can only move double if first row and single move
-        if single > 0 && first {
-            double &= !opp_mask;
-            double &= !curr_mask;
-            moves |= double;
-        };
-
-        // Captures available it opponent is there
-        attack &= opp_mask;
-        moves |= attack;
+        let mut m = MOVES.east[i];
+        let cint = m & curr;
+        let oint = m & opp;
+        if cint + oint > 0 {
+            let cblk = utils::fill_right_incl(cint);
+            let oblk = utils::fill_right_excl(oint);
+            m &= !(cblk | oblk);
+        }
+        moves |= m;
 
         moves
     }
 
-    fn pseudo_legal_ortho(&self, id: usize) -> u64 {
+    fn diag_unrestr(pos: u64, curr: u64, opp: u64) -> u64 {
 
-        let pos_id    = self.current.positions[id].trailing_zeros() as usize;
+        debug_assert!(pos > 0); 
+
         let mut moves = 0;
-        let opp_mask  = self.opponent.pos_mask();
-        let curr_mask = self.current.pos_mask();
-        
-        // north
-        let opp_block   = utils::fill_left_excl(MOVES.north[pos_id] & opp_mask);
-        let curr_block  = utils::fill_left_incl(MOVES.north[pos_id] & curr_mask);
-        moves          |= MOVES.north[pos_id] & !opp_block & !curr_block;
+        let i = pos.trailing_zeros() as usize;
 
-        // west
-        let opp_block   = utils::fill_left_excl(MOVES.west[pos_id] & opp_mask);
-        let curr_block  = utils::fill_left_incl(MOVES.west[pos_id] & curr_mask);
-        moves          |= MOVES.west[pos_id] & !opp_block & !curr_block;
-        
-        // south
-        let opp_block   = utils::fill_right_excl(MOVES.south[pos_id] & opp_mask);
-        let curr_block  = utils::fill_right_incl(MOVES.south[pos_id] & curr_mask);
-        moves          |= MOVES.south[pos_id] & !opp_block & !curr_block;
+        let mut m = MOVES.north_east[i];
+        let cint = m & curr;
+        let oint = m & opp;
+        if cint + oint > 0 {
+            let cblk = utils::fill_left_incl(cint);
+            let oblk = utils::fill_left_excl(oint);
+            m &= !(cblk | oblk);
+        }
+        moves |= m;
 
-        // east
-        let opp_block   = utils::fill_right_excl(MOVES.east[pos_id] & opp_mask);
-        let curr_block  = utils::fill_right_incl(MOVES.east[pos_id] & curr_mask);
-        moves          |= MOVES.east[pos_id] & !opp_block & !curr_block;
+        let mut m = MOVES.north_west[i];
+        let cint = m & curr;
+        let oint = m & opp;
+        if cint + oint > 0 {
+            let cblk = utils::fill_left_incl(cint);
+            let oblk = utils::fill_left_excl(oint);
+            m &= !(cblk | oblk);
+        }
+        moves |= m;
+
+        let mut m = MOVES.south_west[i];
+        let cint = m & curr;
+        let oint = m & opp;
+        if cint + oint > 0 {
+            let cblk = utils::fill_right_incl(cint);
+            let oblk = utils::fill_right_excl(oint);
+            m &= !(cblk | oblk);
+        }
+        moves |= m;
+
+        let mut m = MOVES.south_east[i];
+        let cint = m & curr;
         
+        let oint = m & opp;
+        if cint + oint > 0 {
+            let cblk = utils::fill_right_incl(cint);
+            let oblk = utils::fill_right_excl(oint);
+            m &= !(cblk | oblk);
+        }
+        moves |= m;
+
         moves
     }
 
-    fn pseudo_legal_diag(&self, id: usize) -> u64 {
+    fn pawn_unrestr(pos: u64, curr: u64, opp: u64, player: Player) -> u64 {
 
-        let pos_id    = self.current.positions[id].trailing_zeros() as usize;
+        debug_assert!(pos > 0);
+
         let mut moves = 0;
-        let opp_mask  = self.opponent.pos_mask();
-        let curr_mask = self.current.pos_mask();
-
-        // north_east
-        let opp_block   = utils::fill_left_excl(MOVES.north_east[pos_id] & opp_mask);
-        let curr_block  = utils::fill_left_incl(MOVES.north_east[pos_id] & curr_mask);
-        moves          |= MOVES.north_east[pos_id] & !opp_block & !curr_block;
-
-        // north_west
-        let opp_block   = utils::fill_left_excl(MOVES.north_west[pos_id] & opp_mask);
-        let curr_block  = utils::fill_left_incl(MOVES.north_west[pos_id] & curr_mask);
-        moves          |= MOVES.north_west[pos_id] & !opp_block & !curr_block;
+        let i = pos.trailing_zeros() as usize;
         
-        // south_east
-        let opp_block   = utils::fill_right_excl(MOVES.south_east[pos_id] & opp_mask);
-        let curr_block  = utils::fill_right_incl(MOVES.south_east[pos_id] & curr_mask);
-        moves          |= MOVES.south_east[pos_id] & !opp_block & !curr_block;
-
-        // south_west
-        let opp_block   = utils::fill_right_excl(MOVES.south_west[pos_id] & opp_mask);
-        let curr_block  = utils::fill_right_incl(MOVES.south_west[pos_id] & curr_mask);
-        moves          |= MOVES.south_west[pos_id] & !opp_block & !curr_block;
-        
-        moves
-    }
-
-    // computes attacks from opponent pieces to king
-    fn comp_attacks(&mut self) {
-
-        // King position as bitboard
-        let king_pos = self.current.positions[index::KING];
-        // King position as square index
-        let king_pos_id: usize = king_pos.trailing_zeros().try_into().unwrap();
-        // Reset attacks
-        self.current.attacks = 0;
-        
-        let mut pawn = MOVES.pawn_attacks[king_pos_id];
-        // Pawn only moves forward, mask moves
-        pawn &= match self.player {
-            Player::White => utils::fill_left_excl(king_pos),
-            Player::Black => utils::fill_right_excl(king_pos),
+        use Player::*;
+        let msk = match player {
+            White => utils::fill_left_excl(pos),
+            Black => utils::fill_right_excl(pos),
         };
 
-        // Check overlap with opponents pawn
-        self.current.attacks |= pawn & self.opponent.pawn_mask();
+        moves |= MOVES.pawn_moves[i]
+                    & msk   // Only forward
+                    & !curr // Only empty squares
+                    & !opp; // Including opponents
 
-        let knight = MOVES.knight_moves[king_pos_id];
-        self.current.attacks |= knight & self.opponent.knight_mask();
-        
-        let curr_mask = self.current.pos_mask();
-        let opp_mask = self.opponent.pos_mask();
-
-        for i in index::ROOK[0]..=index::QUEEN {
-            let b = self.opponent.positions[i];
-            // piece may be captured
-            if b == 0 { continue; }
-            let r = utils::ortho_ray_between_excl(b, king_pos);
-            // add ray to sliding attacks, to compute pins
-            // include attacking piece in pin
-            self.opponent.sliding_attacks[i] = r | b;
-            // is there a ray between them?
-            let incident = r > 0;
-            // is a piece (that isn't attacking piece) blocking?
-            let blocked = r & (curr_mask | (opp_mask & !b)) > 0;
-            self.current.attacks |= b * (incident && !blocked) as u64;
-        }
-
-        for i in index::QUEEN..=index::BISHOP[1] {
-            let b = self.opponent.positions[i];
-            if b == 0 { continue; }
-            let r = utils::diag_ray_between_excl(b, king_pos);
-            self.opponent.sliding_attacks[i] = r | b;
-            let incident = r > 0;
-            let blocked = r & (curr_mask | (opp_mask & !b)) > 0;
-            self.current.attacks |= b * (incident && !blocked) as u64;
-        }
-    }
-
-    fn comp_pins(&mut self) {
-
-        let curr_mask = self.current.pos_mask();
-        self.current.pins = [0; PIECE_COUNT];
-
-        for r in self.opponent.sliding_attacks {
-            // check for intersections with current pieces
-            // and ray from sliding opponent piece that may attack king
-            let intersections = (curr_mask & r).count_ones();
-            // if only one piece blocks, it is pinned
-            if intersections == 1 {
-                for i in 0..PIECE_COUNT {
-                    // here we find the piece that is pinned
-                    if self.current.positions[i] & r > 0 {
-                        self.current.pins[i] |= r;
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    // takes opponent attacks and pins in to account
-    fn restrict_moves(&self, mut moves: u64, id: usize) -> u64 {
-
-        let pins = self.current.pins[id];
-        if pins > 0 {
-            moves &= pins;
-        }
-
-        let attacks = self.current.attacks;
-        match attacks.count_ones() {
-            0 => (), // no restriction because no pieces are attacking
-            1 => moves &= attacks, // only viable move is capture attacking piece
-            _ => moves = 0, // more than one attacking -> king must move and no one else
-        };
-
-        moves
-    }
-
-    fn restrict_king_moves(&self, mut moves: u64) -> u64 {
-        
-        // we'll be looking for blocking pieces, so exclude king
-        let curr_mask = self.current.pos_mask() 
-            & !self.current.positions[index::KING];
-
-        'iter_moves: for mov in utils::BitIterator::new(moves) {
-
-            let mov_id: usize = mov.trailing_zeros().try_into().unwrap();
-
-            // Pawns
-            let mut pawns = MOVES.pawn_attacks[mov_id];
-            // pawn only moves forward
-            pawns &= match self.player {
-                Player::White => utils::fill_left_excl(mov),
-                Player::Black => utils::fill_right_excl(mov),
+        if moves > 0 {
+            let (double, first) = match player {
+                White => (pos << 16, i >> 3 == 1),
+                Black => (pos >> 16, i >> 3 == 6),
             };
+            
+            if first { // Only available as first move
+                moves |= double 
+                        & !curr 
+                        & !opp;
+            }
+        }
+        
+        moves |= MOVES.pawn_attacks[i]
+                    & msk   // Only forward
+                    & opp;  // Only opponents
 
-            if pawns & self.opponent.pawn_mask() > 0 {
+        moves
+    }
+
+    fn knight_unrestr(pos: u64, curr: u64, _opp: u64) -> u64 {
+
+        debug_assert!(pos > 0);
+
+        let i = pos.trailing_zeros() as usize;
+        MOVES.knight_moves[i] & !curr
+    }
+
+    fn king_unrestr(pos: u64, curr: u64, _opp: u64) -> u64 {
+
+        debug_assert!(pos > 0);
+
+        let i = pos.trailing_zeros() as usize;
+        MOVES.king_moves[i] & !curr
+    }
+
+    fn ortho_can_reach(pos: u64, target: u64, blk: u64) -> bool {
+        
+        let ray = utils::ortho_ray_between_incl(pos, target);
+    
+        if ray == 0 || // no ray between points
+            blk & (ray & !pos & !target) > 0 // ray is blocked
+        {
+            false
+        } else {
+            true
+        }
+    }
+
+    fn diag_can_reach(pos: u64, target: u64, blk: u64) -> bool {
+        
+        let ray = utils::diag_ray_between_incl(pos, target);
+    
+        if ray == 0 || // no ray between points
+            blk & (ray & !pos & !target) > 0 // ray is blocked
+        {
+            false
+        } else {
+            true
+        }
+    }
+
+    fn restrict(mov: u64, pins: u64) -> u64 {
+        mov & pins
+    }
+
+    fn restrict_king(
+        moves: u64,
+        curr: u64,
+        opp: u64,
+        opp_pos: &[u64],
+        player: Player
+    ) -> u64 {
+
+        use { index::*, Player::*, };
+
+        let mut moves = moves;
+        
+        'outer: for mov in utils::BitIterator::new(moves) {
+            
+            let id = mov.trailing_zeros() as usize;
+            
+            let pwn_att = MOVES.pawn_attacks[id]
+                & match player {
+                    White => utils::fill_left_excl(mov),
+                    Black => utils::fill_right_excl(mov),
+                };
+
+            for &p in &opp_pos[PAWN[0]..=PAWN[7]] {
+                if p & pwn_att > 0 {
+                    moves &= !mov;
+                    continue 'outer;
+                }
+            }
+            
+            let kn_moves = MOVES.knight_moves[id];
+            if kn_moves & (opp_pos[KNIGHT[0]] | opp_pos[KNIGHT[1]]) > 0 {
                 moves &= !mov;
-                continue 'iter_moves;
+                continue;
             }
 
-            // Knights
-            let knights = MOVES.knight_moves[mov_id];
-            if knights & self.opponent.knight_mask() > 0 {
-                moves &= !mov;
-                continue 'iter_moves;
-            }
-
-            // Orthogonal sliding
-            for opp_id in index::ROOK[0]..=index::QUEEN {
-
-                let opp_pos = self.opponent.positions[opp_id];
-                // Piece may be captured
-                if opp_pos == 0 { continue; }
-                let ray = utils::ortho_ray_between_incl(opp_pos, mov);
-                // Right next to
-                if ray.count_ones() == 2 {
+            for &p in &opp_pos[ROOK[0]..=QUEEN] {
+                if Self::ortho_can_reach(p, mov, curr | opp) {
                     moves &= !mov;
-                    continue 'iter_moves;
-                }
-                // Not blocked
-                if ray > 0 && ray & curr_mask == 0 {
-                    moves &= !mov;
-                    continue 'iter_moves;
+                    continue 'outer;
                 }
             }
 
-            // Diagonal sliding
-            for opp_id in index::QUEEN..=index::BISHOP[1] {
-
-                let opp_pos = self.opponent.positions[opp_id];
-                // Piece may be captured
-                if opp_pos == 0 { continue; }
-                let ray = utils::diag_ray_between_incl(opp_pos, mov);
-                // Right next to
-                if ray.count_ones() == 2 {
+            for &p in &opp_pos[QUEEN..=BISHOP[1]] {
+                if Self::diag_can_reach(p, mov, curr | opp) {
                     moves &= !mov;
-                    continue 'iter_moves;
-                }
-                // Not blocked
-                if ray > 0 && ray & curr_mask == 0 {
-                    moves &= !mov;
-                    continue 'iter_moves;
+                    continue 'outer;
                 }
             }
-
         }
 
         moves
     }
 
-    pub fn is_checkmate(&self) -> bool {
+    fn comp_pins(pos: u64, curr: u64, opp: u64, opp_pos: &[u64], king_pos: u64) -> u64 {
 
-        let mut king_moves = self.pseudo_legal_king();
-        king_moves = self.restrict_king_moves(king_moves);
-        let mut attacking = self.current.attacks.count_ones();
-
-        if attacking == 1 {
-            for id in 0..PIECE_COUNT {
-                if self.is_attacking(id, self.current.attacks) {
-                    attacking = 0;
-                    break;
-                }
+        let mut pins = !0u64;
+        
+        use index::*;
+        for &o in &opp_pos[ROOK[0]..=QUEEN] {
+            
+            let ray = utils::ortho_ray_between_excl(king_pos, o);
+            if ray == 0 { continue; }
+            let blockers = (ray & (curr | opp)).count_ones();
+            if blockers == 0 || // Not blocked, must be blocked or captured
+                blockers == 1 && ray & pos > 0 // Only blocker, must stay in lane or capture
+            {
+                pins &= ray | o;
             }
         }
-        
-        // if king can't move and there are multiple attacking pieces,
-        // or the one attacking piece can't be captured
-        // checkmate
-        king_moves == 0 && attacking > 0
-    }
 
-    // Can current piece reach target?
-    // false if piece is captured
-    fn is_attacking(&self, att_id: usize, target: u64) -> bool {
-
-        let pos = self.current.positions[att_id];
-        // piece may be captured
-        if pos == 0 { return false; }
-        
-        match index::into_piece(att_id) {
-            Piece::Pawn => {
-                let mut movs = MOVES.pawn_attacks[att_id];
-                match self.player {
-                    Player::White => movs &= utils::fill_left_excl(pos),
-                    Player::Black => movs &= utils::fill_right_excl(pos),
-                }
-                movs & target > 0
-            },
-            Piece::Knight => {
-                let movs = MOVES.knight_moves[att_id];
-                movs & target > 0
-            },
-            _ => {
-
-                let curr_mask = self.current.pos_mask();
-                let opp_mask = self.opponent.pos_mask();
-
-                if att_id >= index::ROOK[0] && att_id <= index::QUEEN {
-                    let ray = utils::ortho_ray_between_excl(pos, target); 
-                    if ray > 0 && ray & (curr_mask | opp_mask) == 0 {
-                        return true;
-                    }
-                }
-
-                if att_id >= index::QUEEN && att_id <= index::BISHOP[1] {
-                    let ray = utils::diag_ray_between_excl(pos, target); 
-                    if ray > 0 && ray & (curr_mask | opp_mask) == 0 {
-                        return true;
-                    }
-                }
-
-                false
-            },
+        for &d in &opp_pos[QUEEN..=BISHOP[1]] {
+            
+            let ray = utils::diag_ray_between_excl(king_pos, d);
+            if ray == 0 { continue; }
+            let blockers = (ray & (curr | opp)).count_ones();
+            if blockers == 0 || // Not blocked, must be blocked or captured
+                blockers == 1 && ray & pos > 0 // Only blocker, must stay in lane or capture
+            {
+                pins &= ray | d;
+            }
         }
+
+        pins
     }
 }
-
 pub struct TeamIterator<'a> {
     team: &'a Team,
     id: usize,

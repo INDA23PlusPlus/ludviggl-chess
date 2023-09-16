@@ -8,7 +8,7 @@ lazy_static! (
 pub struct Moves {
     pub(crate) king_moves:   [u64; 64],
     pub(crate) knight_moves: [u64; 64],
-    // pawn moves/attacks in both directions, mus be masked
+    // pawn moves/attacks in both directions, must be masked
     // depending on player
     pub(crate) pawn_moves:   [u64; 64],
     pub(crate) pawn_attacks: [u64; 64],

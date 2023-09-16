@@ -35,6 +35,7 @@ mod index {
 #[derive(Clone, Copy, Default)]
 struct Team {
     positions: [u64; PIECE_COUNT],
+    en_passant_pos: u64,
 }
 
 impl Team {
@@ -112,8 +113,23 @@ impl Board {
             Black => (&mut self.black, &mut self.white, ),
         };
 
+        let mut att_pos = mov;
+
+        // check en passant attack
+        if id >= index::PAWN[0] && opp_team.en_passant_pos > 0 {
+
+             let capt_pos = match self.player {
+                 White => mov << 8,
+                 Black => mov >> 8,
+             };
+
+             if opp_team.en_passant_pos == capt_pos {
+                 att_pos = capt_pos;
+             }
+        }
+
         for p in &mut opp_team.positions[..] {
-            if *p == mov {
+            if *p == att_pos {
                 *p = 0;
                 break;
             }

@@ -15,7 +15,7 @@
 //! in a different state. These methods are:
 //! * [Game::select_piece]: may only be called when game state is [State::SelectPiece].
 //! * [Game::get_moves]: may only be called when game state is [State::SelectMove].
-//! * [Game::get_selected_piece]: may only be called when game state is [State::SelectMove].
+//! * [Game::get_selected_pos]: may only be called when game state is [State::SelectMove].
 //! * [Game::select_move]: may only be called when game state is [State::SelectMove].
 //!
 //! ## Examples

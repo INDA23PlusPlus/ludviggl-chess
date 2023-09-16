@@ -119,8 +119,8 @@ impl Board {
         if id >= index::PAWN[0] && opp_team.en_passant_pos > 0 {
 
              let capt_pos = match self.player {
-                 White => mov << 8,
-                 Black => mov >> 8,
+                 White => mov >> 8,
+                 Black => mov << 8,
              };
 
              if opp_team.en_passant_pos == capt_pos {
@@ -167,7 +167,13 @@ impl Board {
         let curr = curr_team.mask();
         let opp = opp_team.mask();
         let mut moves = match index::into_piece(id) {
-            Pawn   => Self::pawn_unrestr(pos, curr, opp, self.player),
+            Pawn   => Self::pawn_unrestr(
+                pos,
+                curr,
+                opp,
+                self.player,
+                opp_team.en_passant_pos
+            ),
             Knight => Self::knight_unrestr(pos, curr, opp),
             King   => Self::king_unrestr(pos, curr, opp),
             Bishop => Self::diag_unrestr(pos, curr, opp),
@@ -200,7 +206,7 @@ impl Board {
             moves = Self::restrict(moves, pins);
         }
 
-        moves // TODO: Restrict
+        moves
     }
 
     pub fn id_from_pos(self: &Self, x: u8, y: u8) -> Option<usize> {
@@ -319,7 +325,13 @@ impl Board {
         moves
     }
 
-    fn pawn_unrestr(pos: u64, curr: u64, opp: u64, player: Player) -> u64 {
+    fn pawn_unrestr(
+        pos: u64,
+        curr: u64,
+        opp: u64,
+        player: Player,
+        opp_en_passant: u64
+    ) -> u64 {
 
         debug_assert!(pos > 0);
 
@@ -353,6 +365,14 @@ impl Board {
         moves |= MOVES.pawn_attacks[i]
                     & msk   // Only forward
                     & opp;  // Only opponents
+
+        // En passant
+        moves |= match player {
+            White => (((MOVES.pawn_attacks[i] & msk) >> 8)
+                        & opp_en_passant) << 8,
+            Black => (((MOVES.pawn_attacks[i] & msk) << 8)
+                        & opp_en_passant) >> 8,
+        } & !curr;
 
         moves
     }
@@ -478,7 +498,7 @@ impl Board {
     ) -> u64 {
 
         let mut pins = !0u64;
-        let king_id = pos.trailing_zeros() as usize;
+        let king_id = king_pos.trailing_zeros() as usize;
         
         use { index::*, Player::*, };
         

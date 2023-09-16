@@ -135,6 +135,18 @@ impl Board {
             }
         }
 
+        // update en passant pos
+        let dist = curr_team.positions[id].trailing_zeros() as i32
+                    - mov.trailing_zeros() as i32;
+
+        let double_move = dist == 16 || dist == -16;
+
+        if id >= index::PAWN[0] && double_move {
+            curr_team.en_passant_pos = mov;
+        } else {
+            curr_team.en_passant_pos = 0;
+        }
+
         curr_team.positions[id] = mov;
         self.player = match self.player {
             White => Black,

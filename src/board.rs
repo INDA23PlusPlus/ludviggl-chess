@@ -185,6 +185,7 @@ impl Board {
         if id == index::KING {
 
             moves = Self::restrict_king(
+                pos,
                 moves,
                 curr,
                 opp,
@@ -428,6 +429,7 @@ impl Board {
     }
 
     fn restrict_king(
+        pos: u64,
         moves: u64,
         curr: u64,
         opp: u64,
@@ -463,7 +465,7 @@ impl Board {
             }
 
             for &p in &opp_pos[ROOK[0]..=QUEEN] {
-                if Self::ortho_can_reach(p, mov, curr | opp) {
+                if Self::ortho_can_reach(p, mov, (curr & !pos) | opp) {
                     if p == mov {
                         // We can capture it
                         continue;
@@ -474,7 +476,7 @@ impl Board {
             }
 
             for &p in &opp_pos[QUEEN..=BISHOP[1]] {
-                if Self::diag_can_reach(p, mov, curr | opp) {
+                if Self::diag_can_reach(p, mov, (curr & !pos) | opp) {
                     if p == mov {
                         // We can capture it
                         continue;

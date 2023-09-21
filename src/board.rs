@@ -37,6 +37,9 @@ struct Team {
     promotions:     [Option<Piece>; PIECE_COUNT],
     promotion_id:   isize,
     en_passant_pos: u64,
+    did_castling:   bool,
+    did_move:       u64,
+    king_moved:     bool,
 }
 
 impl Team {
@@ -58,6 +61,9 @@ impl Default for Team {
             promotions:     [None; PIECE_COUNT],
             promotion_id:   -1,
             en_passant_pos: 0,
+            did_castling:   false,
+            did_move:       0,
+            king_moved:      false,
         }
     }
 }
@@ -189,16 +195,16 @@ impl Board {
             }
         }
 
+        let pos = curr_team.positions[id];
+        let mtz = mov.trailing_zeros() as i32;
+
+        let dist = pos.trailing_zeros() as i32 - mtz;
+
         let mut switch = true;
         
         if id >= index::PAWN[0] {
 
-            let pos = curr_team.positions[id];
-            let mtz = mov.trailing_zeros() as i32;
-
             // update en passant pos
-            let dist = pos.trailing_zeros() as i32 - mtz;
-
             let double_move = dist == 16 || dist == -16;
 
             if double_move {
@@ -216,6 +222,50 @@ impl Board {
                     switch = false;
                 }
             }
+        }
+
+        // Castling
+        match index::into_piece(id) {
+            Piece::Rook => {
+                curr_team.did_move |= mov;
+            },
+            Piece::King => {
+
+                curr_team.king_moved = true;
+
+                let (castl, cmask, roffset) = match dist {
+                    -2 => ( // left
+                        true,
+                        utils::fill_left_excl(pos),
+                        -1,
+                    ),
+                    2 => ( // right
+                        true,
+                        utils::fill_right_excl(pos),
+                        1,
+                    ),
+                    _ => (false, 0, 0),
+                };
+
+                if castl {
+
+                    curr_team.did_castling = true;
+
+                    let rpos = match roffset {
+                        -1 => mov >> 1,
+                        1  => mov << 1,
+                        _ => panic!(),
+                    };
+
+                    for rp in &mut curr_team.positions[index::ROOK[0]..=index::ROOK[1]] {
+                        
+                        if *rp & cmask > 0 {
+                            *rp = rpos;
+                        }
+                    }
+                }
+            }
+            _ => (),
         }
 
         curr_team.positions[id] = mov;
@@ -272,7 +322,6 @@ impl Board {
         if id == index::KING {
 
             moves = Self::restrict_king(
-                pos,
                 moves,
                 curr,
                 opp,
@@ -280,6 +329,8 @@ impl Board {
                 &opp_team.promotions,
                 self.player
             );
+
+            moves |= Self::castling_moves(pos, &curr_team, &opp_team, self.player);
 
         } else {
 
@@ -483,6 +534,63 @@ impl Board {
         MOVES.king_moves[i] & !curr
     }
 
+    fn castling_moves(
+        kpos: u64,
+        curr_team: &Team,
+        opp_team: &Team,
+        player: Player
+    ) -> u64 {
+
+        let mut moves = 0;
+
+        if curr_team.king_moved {
+            return 0;
+        }
+
+        // Get available rooks
+        let mut rooks = 0;
+        for &p in &curr_team.positions[index::ROOK[0]..=index::ROOK[1]] {
+            rooks |= p;
+        }
+        
+        // Only rooks on the same row
+        rooks &= utils::byte_mask(kpos.trailing_zeros() as usize);
+
+        // Only rooks that haven't moved
+        rooks &= !curr_team.did_move;
+
+        let move_mask = kpos << 2 | kpos >> 2;
+
+        for r in utils::BitIterator::new(rooks) {
+
+            // Make sure positions are vacant
+            let between = utils::ortho_ray_between_excl(r, kpos);
+            if between & (curr_team.mask() | opp_team.mask()) > 0 {
+                continue;
+            }
+
+            // Find move destination
+            let mov = move_mask & between;
+
+            // Make sure no square on the way is attacked
+            for b in utils::BitIterator::new(utils::ortho_ray_between_excl(kpos, mov)) {
+
+                if !Self::is_attacked(
+                    b,
+                    curr_team.mask(),
+                    opp_team.mask(),
+                    &opp_team.positions,
+                    &opp_team.promotions,
+                    player
+                ) {
+                    moves |= mov;
+                }
+            }
+        }
+
+        moves
+    }
+
     fn ortho_can_reach(pos: u64, target: u64, blk: u64) -> bool {
 
         if pos == 0 { return false; }
@@ -518,7 +626,6 @@ impl Board {
     }
 
     fn restrict_king(
-        pos: u64,
         moves: u64,
         curr: u64,
         opp: u64,
@@ -527,106 +634,115 @@ impl Board {
         player: Player
     ) -> u64 {
 
-        use { index::*, Player::*, };
-
         let mut moves = moves;
         
-        'outer: for mov in utils::BitIterator::new(moves) {
-            
-            let id = mov.trailing_zeros() as usize;
-            
-            let pwn_att = MOVES.pawn_attacks[id]
-                & match player {
-                    White => utils::fill_left_excl(mov),
-                    Black => utils::fill_right_excl(mov),
-                };
-            
-            for i in PAWN[0]..=PAWN[7] {
-                // May be promoted
-                if !matches!(opp_prom[i], None) {
-                    continue;
-                }
-                let p = &opp_pos[i];
-                if p & pwn_att > 0 {
-                    moves &= !mov;
-                    continue 'outer;
-                }
-            }
-            
-            let kn_moves = MOVES.knight_moves[id];
-            if kn_moves & (opp_pos[KNIGHT[0]] | opp_pos[KNIGHT[1]]) > 0 {
+        for mov in utils::BitIterator::new(moves) {
+            if Self::is_attacked(mov, curr, opp, opp_pos, opp_prom, player) {
                 moves &= !mov;
+            }    
+        }
+
+        moves
+    }
+
+
+    fn is_attacked(
+        pos: u64,
+        curr: u64,
+        opp: u64,
+        opp_pos: &[u64],
+        opp_prom: &[Option<Piece>],
+        player: Player
+    ) -> bool {
+
+        use { index::*, Player::*, };
+
+        let id = pos.trailing_zeros() as usize;
+        
+        let pwn_att = MOVES.pawn_attacks[id]
+            & match player {
+                White => utils::fill_left_excl(pos),
+                Black => utils::fill_right_excl(pos),
+            };
+        
+        for i in PAWN[0]..=PAWN[7] {
+            // May be promoted
+            if !matches!(opp_prom[i], None) {
                 continue;
             }
-            
-            // Promoted pawns
-            for i in PAWN[0]..=PAWN[7] {
-                if let Some(Piece::Knight) = opp_prom[i] {
-                    let tz = opp_pos[i].trailing_zeros() as usize;
-                    let pkn_moves = MOVES.knight_moves[tz];
-                    if pkn_moves & mov > 0 {
-                        moves &= !mov;
-                        continue 'outer;
-                    }
+            let p = &opp_pos[i];
+            if p & pwn_att > 0 {
+                return true;
+            }
+        }
+        
+        let kn_poses = MOVES.knight_moves[id];
+        if kn_poses & (opp_pos[KNIGHT[0]] | opp_pos[KNIGHT[1]]) > 0 {
+            return true;
+        }
+        
+        // Promoted pawns
+        for i in PAWN[0]..=PAWN[7] {
+            if let Some(Piece::Knight) = opp_prom[i] {
+                let tz = opp_pos[i].trailing_zeros() as usize;
+                let pkn_poses = MOVES.knight_moves[tz];
+                if pkn_poses & pos > 0 {
+                    return true;
                 }
             }
+        }
 
-            for &p in &opp_pos[ROOK[0]..=QUEEN] {
-                if Self::ortho_can_reach(p, mov, (curr & !pos) | opp) {
-                    if p == mov {
-                        // We can capture it
-                        continue;
-                    }
-                    moves &= !mov;
-                    continue 'outer;
+        for &p in &opp_pos[ROOK[0]..=QUEEN] {
+            if Self::ortho_can_reach(p, pos, (curr & !pos) | opp) {
+                if p == pos {
+                    // We can capture it
+                    continue;
                 }
+                return true;
             }
+        }
 
-            for &p in &opp_pos[QUEEN..=BISHOP[1]] {
-                if Self::diag_can_reach(p, mov, (curr & !pos) | opp) {
-                    if p == mov {
-                        // We can capture it
-                        continue;
-                    }
-                    moves &= !mov;
-                    continue 'outer;
+        for &p in &opp_pos[QUEEN..=BISHOP[1]] {
+            if Self::diag_can_reach(p, pos, (curr & !pos) | opp) {
+                if p == pos {
+                    // We can capture it
+                    continue;
                 }
+                return true;
             }
-            
-            // Promoted pawns
-            for i in PAWN[0]..=PAWN[7] {
-                if let Some(piece) = opp_prom[i] {
+        }
+        
+        // Promoted pawns
+        for i in PAWN[0]..=PAWN[7] {
+            if let Some(piece) = opp_prom[i] {
 
-                    let p = opp_pos[i];
+                let p = opp_pos[i];
 
-                    if matches!(piece, Piece::Rook) || matches!(piece, Piece::Queen) {
+                if matches!(piece, Piece::Rook) || matches!(piece, Piece::Queen) {
 
-                        if Self::ortho_can_reach(p, mov, (curr & !pos) | opp) {
-                            if p == mov {
-                                // We can capture it
-                                continue;
-                            }
-                            moves &= !mov;
-                            continue 'outer;
+                    if Self::ortho_can_reach(p, pos, (curr & !pos) | opp) {
+                        if p == pos {
+                            // We can capture it
+                            continue;
                         }
+                        return true;
                     }
+                }
 
-                    if matches!(piece, Piece::Bishop) || matches!(piece, Piece::Queen) {
+                if matches!(piece, Piece::Bishop) || matches!(piece, Piece::Queen) {
 
-                        if Self::diag_can_reach(p, mov, (curr & !pos) | opp) {
-                            if p == mov {
-                                // We can capture it
-                                continue;
-                            }
-                            moves &= !mov;
-                            continue 'outer;
+                    if Self::diag_can_reach(p, pos, (curr & !pos) | opp) {
+                        if p == pos {
+                            // We can capture it
+                            continue;
                         }
+                        return true;
                     }
                 }
             }
         }
 
-        moves
+        return false;
     }
 
     fn comp_pins(

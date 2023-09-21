@@ -7,4 +7,6 @@ pub enum Error {
     InvalidState,
     /// The position provided lies outside the board.
     InvalidPosition,
+    /// The piece provided is not a valid promotion.
+    InvalidPromotion,
 }

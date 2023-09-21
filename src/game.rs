@@ -27,6 +27,8 @@ pub enum State {
     SelectMove,
     /// Current player is in checkmate.
     CheckMate,
+    /// Current player needs to select a promotion
+    SelectPromotion,
 }
 
 impl Game {
@@ -159,9 +161,37 @@ impl Game {
 
         self.update_positions();
 
-        if self.board.is_checkmate() {
+        if self.board.has_promotion() {
+            self.state = State::SelectPromotion;
+        } else if self.board.is_checkmate() {
             self.state = State::CheckMate;
         }
+
+        Ok(())
+    }
+
+    /// Selects a piece to promote pawn to.
+    /// Must bee one of [Piece::Rook], [Piece::Knight], [Piece::Bishop]
+    /// or [Piece::Queen]. Returns [Error::InvalidPromotion] if any other
+    /// piece is provided. Returns [Error::InvalidState] if state is not
+    /// [State::SelectPromotion].
+    pub fn select_promotion(&mut self, piece: Piece) -> Result<(), Error> {
+
+        if !matches!(self.state, State::SelectPromotion) {
+            return Err(Error::InvalidState);
+        }
+
+        use Piece::*;
+
+        match piece {
+            Rook | Knight | Bishop | Queen => (), 
+            _ => return Err(Error::InvalidPromotion),
+        };
+
+        self.board.select_promotion(piece);
+
+        self.state = State::SelectPiece;
+        self.update_positions();
 
         Ok(())
     }

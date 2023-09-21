@@ -1,5 +1,4 @@
 
-
 use crate::piece::Piece;
 use crate::player::Player;
 use crate::moves::MOVES;
@@ -32,9 +31,11 @@ mod index {
 }
 
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy)]
 struct Team {
-    positions: [u64; PIECE_COUNT],
+    positions:      [u64; PIECE_COUNT],
+    promotions:     [Option<Piece>; PIECE_COUNT],
+    promotion_id:   isize,
     en_passant_pos: u64,
 }
 
@@ -46,6 +47,18 @@ impl Team {
             m |= p; 
         }
         m
+    }
+}
+
+impl Default for Team {
+
+    fn default() -> Self {
+        Self {
+            positions:      [0; PIECE_COUNT],
+            promotions:     [None; PIECE_COUNT],
+            promotion_id:   -1,
+            en_passant_pos: 0,
+        }
     }
 }
 
@@ -100,8 +113,49 @@ impl Board {
         TeamIterator::new(&self.black)
     }
 
+    pub fn has_promotion(self: &Self) -> bool { 
+        (match self.player {
+            Player::White => self.white.promotion_id,
+            Player::Black => self.black.promotion_id,
+        }) >= 0
+    }
+
     pub fn is_checkmate(self: &Self) -> bool {
-        false // TODO
+        
+        // Just check if there are any available moves
+        for id in 0..PIECE_COUNT {
+
+            if (*match self.player {
+                Player::White => &self.white,
+                Player::Black => &self.black,
+            }).positions[id] == 0 { continue; }
+
+            if self.get_legal_moves(id) > 0 {
+                return false;
+            } 
+        }
+
+        true
+    }
+
+    pub fn select_promotion(self: &mut Self, piece: Piece) {
+
+        let curr = match self.player {
+            Player::White => &mut self.white,
+            Player::Black => &mut self.black,
+        };
+
+        debug_assert!(curr.promotion_id >= 0);
+
+        curr.promotions[curr.promotion_id as usize] 
+            = Some(piece);
+        curr.promotion_id = -1;
+        
+        use Player::*;
+        self.player = match self.player {
+            White => Black,
+            Black => White,
+        };
     }
 
     pub fn play_move(self: &mut Self, id: usize, mov: u64) {
@@ -135,23 +189,43 @@ impl Board {
             }
         }
 
-        // update en passant pos
-        let dist = curr_team.positions[id].trailing_zeros() as i32
-                    - mov.trailing_zeros() as i32;
+        let mut switch = true;
+        
+        if id >= index::PAWN[0] {
 
-        let double_move = dist == 16 || dist == -16;
+            let pos = curr_team.positions[id];
+            let mtz = mov.trailing_zeros() as i32;
 
-        if id >= index::PAWN[0] && double_move {
-            curr_team.en_passant_pos = mov;
-        } else {
-            curr_team.en_passant_pos = 0;
+            // update en passant pos
+            let dist = pos.trailing_zeros() as i32 - mtz;
+
+            let double_move = dist == 16 || dist == -16;
+
+            if double_move {
+                curr_team.en_passant_pos = mov;
+            } else {
+                curr_team.en_passant_pos = 0;
+            }
+
+            // check for promotion
+            if mtz < 8 || mtz >= 56 {
+                
+                // Can't promote twice
+                if matches!(curr_team.promotions[id], None) {
+                    curr_team.promotion_id = id as isize;
+                    switch = false;
+                }
+            }
         }
 
         curr_team.positions[id] = mov;
-        self.player = match self.player {
-            White => Black,
-            Black => White,
-        };
+
+        if switch {
+            self.player = match self.player {
+                White => Black,
+                Black => White,
+            };
+        }
     }
 
     pub fn get_legal_moves(self: &Self, id: usize) -> u64 {
@@ -167,13 +241,26 @@ impl Board {
         let curr = curr_team.mask();
         let opp = opp_team.mask();
         let mut moves = match index::into_piece(id) {
-            Pawn   => Self::pawn_unrestr(
-                pos,
-                curr,
-                opp,
-                self.player,
-                opp_team.en_passant_pos
-            ),
+            // With pawn we must check if it has been promoted first
+            Pawn   => if let Some(piece) = curr_team.promotions[id] {
+                    // Promotion
+                    match piece {
+                        Rook   => Self::ortho_unrestr(pos, curr, opp),
+                        Bishop => Self::diag_unrestr(pos, curr, opp),
+                        Queen  => Self::ortho_unrestr(pos, curr, opp)
+                                | Self::diag_unrestr(pos, curr, opp),
+                        _      => panic!(),
+                    }
+                } else {
+                    // Regular pawn :/
+                    Self::pawn_unrestr(
+                        pos,
+                        curr,
+                        opp,
+                        self.player,
+                        opp_team.en_passant_pos
+                    )
+            },
             Knight => Self::knight_unrestr(pos, curr, opp),
             King   => Self::king_unrestr(pos, curr, opp),
             Bishop => Self::diag_unrestr(pos, curr, opp),
@@ -190,6 +277,7 @@ impl Board {
                 curr,
                 opp,
                 &opp_team.positions,
+                &opp_team.promotions,
                 self.player
             );
 
@@ -200,6 +288,7 @@ impl Board {
                 curr,
                 opp,
                 &opp_team.positions,
+                &opp_team.promotions,
                 curr_team.positions[index::KING],
                 self.player
             );
@@ -434,6 +523,7 @@ impl Board {
         curr: u64,
         opp: u64,
         opp_pos: &[u64],
+        opp_prom: &[Option<Piece>],
         player: Player
     ) -> u64 {
 
@@ -450,8 +540,13 @@ impl Board {
                     White => utils::fill_left_excl(mov),
                     Black => utils::fill_right_excl(mov),
                 };
-
-            for &p in &opp_pos[PAWN[0]..=PAWN[7]] {
+            
+            for i in PAWN[0]..=PAWN[7] {
+                // May be promoted
+                if !matches!(opp_prom[i], None) {
+                    continue;
+                }
+                let p = &opp_pos[i];
                 if p & pwn_att > 0 {
                     moves &= !mov;
                     continue 'outer;
@@ -462,6 +557,18 @@ impl Board {
             if kn_moves & (opp_pos[KNIGHT[0]] | opp_pos[KNIGHT[1]]) > 0 {
                 moves &= !mov;
                 continue;
+            }
+            
+            // Promoted pawns
+            for i in PAWN[0]..=PAWN[7] {
+                if let Some(Piece::Knight) = opp_prom[i] {
+                    let tz = opp_pos[i].trailing_zeros() as usize;
+                    let pkn_moves = MOVES.knight_moves[tz];
+                    if pkn_moves & mov > 0 {
+                        moves &= !mov;
+                        continue 'outer;
+                    }
+                }
             }
 
             for &p in &opp_pos[ROOK[0]..=QUEEN] {
@@ -485,6 +592,38 @@ impl Board {
                     continue 'outer;
                 }
             }
+            
+            // Promoted pawns
+            for i in PAWN[0]..=PAWN[7] {
+                if let Some(piece) = opp_prom[i] {
+
+                    let p = opp_pos[i];
+
+                    if matches!(piece, Piece::Rook) || matches!(piece, Piece::Queen) {
+
+                        if Self::ortho_can_reach(p, mov, (curr & !pos) | opp) {
+                            if p == mov {
+                                // We can capture it
+                                continue;
+                            }
+                            moves &= !mov;
+                            continue 'outer;
+                        }
+                    }
+
+                    if matches!(piece, Piece::Bishop) || matches!(piece, Piece::Queen) {
+
+                        if Self::diag_can_reach(p, mov, (curr & !pos) | opp) {
+                            if p == mov {
+                                // We can capture it
+                                continue;
+                            }
+                            moves &= !mov;
+                            continue 'outer;
+                        }
+                    }
+                }
+            }
         }
 
         moves
@@ -495,6 +634,7 @@ impl Board {
         curr: u64,
         opp: u64,
         opp_pos: &[u64],
+        opp_prom: &[Option<Piece>],
         king_pos: u64,
         player: Player
     ) -> u64 {
@@ -509,7 +649,12 @@ impl Board {
             Black => utils::fill_right_excl(king_pos),
         };
 
-        for &p in &opp_pos[PAWN[0]..=PAWN[7]] {
+        for i in PAWN[0]..=PAWN[7] {
+            // May be promoted
+            if !matches!(opp_prom[i], None) {
+                continue;
+            }
+            let p = opp_pos[i];
             if pwn_att & p > 0 {
                 pins &= p;
             }
@@ -561,6 +706,60 @@ impl Board {
             }
         }
 
+        // Check promoted
+        use Piece::*;
+        for i in PAWN[0]..=PAWN[7] {
+            if let Some(prom) = opp_prom[i] {
+                let p = opp_pos[i];
+                match prom {
+                    Knight => {
+                        if kn_mov & p > 0 {
+                            pins &= p;
+                        }
+                    },
+                    _ => {
+                        if matches!(prom, Rook) || matches!(prom, Queen) {
+                            
+                            let ray = utils::ortho_ray_between_excl(king_pos, p);
+                            if ray == 0 {
+                                // It might be adjacent, in which case ray is empty
+                                // Thus we check inclusive ray
+                                if utils::ortho_ray_between_incl(king_pos, p) > 0 {
+                                    pins &= p;
+                                }
+                                continue;
+                            }
+                            let blockers = (ray & (curr | opp)).count_ones();
+                            if blockers == 0 || // Not blocked, must be blocked pr captured
+                                blockers == 1 && ray & pos > 0 // Only blocker, must stay in lane pr capture
+                            {
+                                pins &= ray | p;
+                            }
+                        }
+
+                        if matches!(prom, Bishop) || matches!(prom, Queen) {
+                            
+                            let ray = utils::diag_ray_between_excl(king_pos, p);
+                            if ray == 0 {
+                                // It might be adjacent, in which case ray is empty
+                                // Thus we check inclusive ray
+                                if utils::diag_ray_between_incl(king_pos, p) > 0 {
+                                    pins &= p;
+                                }
+                                continue;
+                            }
+                            let blockers = (ray & (curr | opp)).count_ones();
+                            if blockers == 0 || // Not blocked, must be blocked or captured
+                                blockers == 1 && ray & pos > 0 // Only blocker, must stay in lane or capture
+                            {
+                                pins &= ray | p;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         pins
     }
 }
@@ -595,7 +794,10 @@ impl<'a> Iterator for TeamIterator<'a> {
                 bit = self.team.positions[self.id];
             }
             let pos = utils::unflatten_bit(bit);
-            let piece = index::into_piece(self.id);
+            let piece = match self.team.promotions[self.id] {
+                None => index::into_piece(self.id),
+                Some(piece) => piece,
+            };
             self.id += 1;
             Some((piece, pos.0, pos.1)) 
         } else { None }

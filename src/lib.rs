@@ -17,6 +17,7 @@
 //! * [Game::get_moves]: may only be called when game state is [State::SelectMove].
 //! * [Game::get_selected_pos]: may only be called when game state is [State::SelectMove].
 //! * [Game::select_move]: may only be called when game state is [State::SelectMove].
+//! * [Game::select_promotion]: may only be called when game state is [State::SelectPromotion].
 //!
 //! ## Examples
 //! Functions not in this crate or prepended with `frontend::`,
@@ -61,8 +62,10 @@
 //! use ludviggl_chess::{ Game, Piece, State, };
 //!
 //! # mod frontend {
+//! #    use ludviggl_chess::Piece;
 //! #    pub fn get_clicked_square() -> (u8, u8) { (0, 0,) }
 //! #    pub fn game_over() {}
+//! #    pub fn get_promotion() -> Piece { Piece::Queen }
 //! # }
 //! # let mut game = Game::new();
 //! // assuming frontend::get_clicked_square() only returns valid positions:
@@ -75,10 +78,15 @@
 //!     State::SelectMove => {
 //!         let (x, y) = frontend::get_clicked_square();
 //!         game.select_move(x, y).unwrap(); // we know state is State::SelectMove
-//!                                           // and position is valid, hence .unwrap()
+//!                                          // and position is valid, hence .unwrap()
 //!     },
 //!     State::CheckMate => {
 //!         frontend::game_over();
+//!     },
+//!     State::SelectPromotion => {
+//!         let piece = frontend::get_promotion();
+//!         game.select_promotion(piece).unwrap(); // we know state is State::SelectPromotion
+//!                                                // and promotion is valid piece
 //!     },
 //! }
 //! ```
